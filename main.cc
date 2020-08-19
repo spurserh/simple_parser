@@ -20,10 +20,14 @@ typedef unsigned Token;
 typedef unsigned RuleName;
 typedef unsigned GroupName;
 
+#define TYPEID_EXPERIMENT 0
+
 const vector<string> sLexicalTokenTypes = {
 	"NULL",
 	"ID",
+#if TYPEID_EXPERIMENT
 	"TYPEID",
+#endif
 	"NUM",
 	"INT",
 	"VOID",
@@ -92,8 +96,11 @@ const vector<RawRule> sRules = {
 
 	RawRule("type", "void_type", {"VOID"}),
 	RawRule("type", "int_type", {"INT"}),
-//	RawRule("type", "id_type", {"ID"}),
+#if !TYPEID_EXPERIMENT
+	RawRule("type", "id_type", {"ID"}),
+#else
 	RawRule("type", "id_type", {"TYPEID"}),
+#endif
 
 	RawRule("type", "static_ref_type", {"type", "DBLCOLON", "type"}),
 //	RawRule("type_template_params", "type_template_params_t", {"type"}),
@@ -725,12 +732,14 @@ int main() {
 			break;
 		}
 
+#if TYPEID_EXPERIMENT
 		const string content = GetTokenInstContent(tok);
 		string type_name = GetTokenInstTypeName(tok);
 		if(type_name == "ID" && (content == "ac" || content == "ac_int" || content == "log2_ceil")) {
 			tok = LexGetTokenInstName("TYPEID", content.c_str());
 		}
-		
+#endif
+
 		fprintf(stderr, "\n\nNext %s\n", TokenToString(tok).c_str());
 
 		fprintf(stderr, "Candidates (%i):\n", candidates.size());
