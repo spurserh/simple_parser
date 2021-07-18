@@ -1,0 +1,88 @@
+/LEX/
+
+%option noyywrap
+
+alpha [a-zA-Z_]
+digit [0-9]
+
+%%
+[ \t]		;
+[ \n]   { yylineno = yylineno + 1;}
+"int"	return LexGetTokenInstName("INT", "");
+"true"	return LexGetTokenInstName("TRUE", "");
+"false"	return LexGetTokenInstName("FALSE", "");
+"module"	return LexGetTokenInstName("MODULE", "");
+"endmodule"	return LexGetTokenInstName("ENDMODULE", "");
+"wire"	return LexGetTokenInstName("WIRE", "");
+"input"	return LexGetTokenInstName("INPUT", "");
+"output"	return LexGetTokenInstName("OUTPUT", "");
+"reg"	return LexGetTokenInstName("REG", "");
+"always"	return LexGetTokenInstName("ALWAYS", "");
+"begin"	return LexGetTokenInstName("BEGIN", "");
+"end"	return LexGetTokenInstName("END", "");
+"posedge"	return LexGetTokenInstName("POSEDGE", "");
+"negedge"	return LexGetTokenInstName("NEGEDGE", "");
+"@"	return LexGetTokenInstName("AT", "");
+{digit}+       return LexGetTokenInstName("NUM", yytext);
+{alpha}({alpha}|{digit})* return LexGetTokenInstName("ID", yytext);
+"+"     return LexGetTokenInstName("PLUS", "");
+"-"     return LexGetTokenInstName("MINUS", "");
+"*"     return LexGetTokenInstName("TIMES", "");
+"/"     return LexGetTokenInstName("DIVIDE", "");
+"%"     return LexGetTokenInstName("MOD", "");
+"="     return LexGetTokenInstName("EQUALS", "");
+":"     return LexGetTokenInstName("COLON", "");
+";"     return LexGetTokenInstName("SEMI", "");
+"("     return LexGetTokenInstName("LPAREN", "");
+")"     return LexGetTokenInstName("RPAREN", "");
+"{"     return LexGetTokenInstName("LBRACE", "");
+"}"     return LexGetTokenInstName("RBRACE", "");
+"<"     return LexGetTokenInstName("LT", "");
+">"     return LexGetTokenInstName("GT", "");
+"["     return LexGetTokenInstName("LBRACKET", "");
+"]"     return LexGetTokenInstName("RBRACKET", "");
+","     return LexGetTokenInstName("COMMA", "");
+%%
+
+/GRAMMAR/
+
+top_list top_list_base top_base top_list
+top_list top_list_ext top_base
+top top top_list
+
+top_base top_base_func module_def
+
+module_def module_def MODULE ID LPAREN module_int_list RPAREN SEMI 
+
+bit_range bit_range LBRACKET NUM COLON NUM RBRACKET
+
+in_or_out in_or_out_in INPUT
+in_or_out in_or_out_out OUTPUT
+
+module_int module_int_single in_or_out bit_range ID
+module_int module_int_range in_or_out ID
+
+module_int_list module_int_list_ext module_int COMMA module_int_list
+module_int_list module_int_list_base module_int
+
+expr paren_expr LPAREN expr RPAREN
+
+expr id_expr ID
+expr num_expr NUM
+bool true_expr TRUE
+bool false_expr FALSE
+expr bool_expr bool
+
+4 expr plus_expr expr PLUS expr
+4 expr minus_expr expr MINUS expr
+
+3 expr times_expr expr TIMES expr
+3 expr divide_expr expr DIVIDE expr
+3 expr modulo_expr expr MOD expr
+
+6 expr gt_expr expr GT expr
+6 expr lt_expr expr LT expr
+
+
+
+

@@ -71,7 +71,9 @@ const vector<RawRule> sRules = {
 	""")
 		def FormatRuleFromLine(line):
 			columns = re.split(r"[ \t]+", line)
-			
+			# Remove empty columns
+			columns = list(filter(lambda s: len(s) != 0, columns))
+	
 			priority = 0
 			if columns[0].isnumeric():
 				priority = int(columns[0])

@@ -38,7 +38,7 @@ struct RawRule {
 // sLexicalTokenTypes
 // sRules
 
-#include "cpp_grammar.h"
+#include "grammar.h"
 
 
 vector<string> BuildTokenTypes() {
@@ -550,6 +550,13 @@ double doubletime() {
 	return tv.tv_sec + double(tv.tv_usec) / 1000000.0;
 }
 
+static double sStartTime = 0;
+
+void on_exit() {
+	const double end_time = doubletime();
+	fprintf(stderr, "Parsing time %fms\n", (end_time-sStartTime) * 1000.0);
+}
+
 int main(int argc, const char **argv) {
 
 	const Token top_token = GetTokenTypeId("top");
@@ -583,7 +590,9 @@ int main(int argc, const char **argv) {
 
 	fprintf(stderr, "--- Parsing starts ---\n");
 
-	const double start_time = doubletime();
+	sStartTime = doubletime();
+
+	::atexit(on_exit);
 
 	while(true) {
 		Token tok = yylex();
@@ -606,14 +615,12 @@ int main(int argc, const char **argv) {
 		ConsumeToken(tok, candidates);
 
 		if(candidates.size() == 0) {
+			// TODO: Report line number in preprocessed file
 			fprintf(stderr, "ERROR at %i\n", yylineno);
 			exit(1);
 		}
 	}
 
-	const double end_time = doubletime();
-
-	fprintf(stderr, "Parsing time %fms\n", (end_time-start_time) * 1000.0);
 
 
 	// Erase incomplete
