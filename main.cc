@@ -141,6 +141,7 @@ struct Rule {
 
 	Rule(Token token_name, RuleName name, int priority, vector<Token> pattern)
 	  : token_name(token_name), name(name), priority(priority), pattern(pattern) {
+	  	assert(pattern.size() > 0);
 	}
 };
 
@@ -600,10 +601,10 @@ int main(int argc, const char **argv) {
 			break;
 		}
 
+		string tok_type_name = GetTokenInstTypeName(tok);
 #if TYPEID_EXPERIMENT
 		const string content = GetTokenInstContent(tok);
-		string type_name = GetTokenInstTypeName(tok);
-		if(type_name == "ID" && (content == "ac" || content == "ac_int" || content == "log2_ceil")) {
+		if(tok_type_name == "ID" && (content == "ac" || content == "ac_int" || content == "log2_ceil")) {
 			tok = LexGetTokenInstName("TYPEID", content.c_str());
 		}
 #endif
@@ -616,7 +617,7 @@ int main(int argc, const char **argv) {
 
 		if(candidates.size() == 0) {
 			// TODO: Report line number in preprocessed file
-			fprintf(stderr, "ERROR at %i\n", yylineno);
+			fprintf(stderr, "ERROR at line %i, token %s\n", yylineno, tok_type_name.c_str());
 			exit(1);
 		}
 	}

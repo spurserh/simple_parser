@@ -17,11 +17,14 @@ digit [0-9]
 "input"	return LexGetTokenInstName("INPUT", "");
 "output"	return LexGetTokenInstName("OUTPUT", "");
 "reg"	return LexGetTokenInstName("REG", "");
+"assign"	return LexGetTokenInstName("ASSIGN", "");
 "always"	return LexGetTokenInstName("ALWAYS", "");
 "begin"	return LexGetTokenInstName("BEGIN", "");
 "end"	return LexGetTokenInstName("END", "");
 "posedge"	return LexGetTokenInstName("POSEDGE", "");
 "negedge"	return LexGetTokenInstName("NEGEDGE", "");
+"if"	return LexGetTokenInstName("IF", "");
+"else"	return LexGetTokenInstName("ELSE", "");
 "@"	return LexGetTokenInstName("AT", "");
 {digit}+       return LexGetTokenInstName("NUM", yytext);
 {alpha}({alpha}|{digit})* return LexGetTokenInstName("ID", yytext);
@@ -52,7 +55,26 @@ top top top_list
 
 top_base top_base_func module_def
 
-module_def module_def MODULE ID LPAREN module_int_list RPAREN SEMI 
+module_def module_def MODULE ID LPAREN module_int_list RPAREN SEMI module_body ENDMODULE
+
+reg_decl reg_decl_single REG ID
+reg_decl reg_decl_range REG bit_range ID
+
+module_body_stmt reg_decl_noinit reg_decl SEMI
+module_body_stmt reg_decl_init reg_decl EQUALS expr SEMI
+module_body_stmt continuous_assign ASSIGN ID EQUALS ID SEMI
+module_body_stmt always_block ALWAYS AT LPAREN POSEDGE ID RPAREN BEGIN always_stmt_body END
+
+module_body module_body_base module_body_stmt
+module_body module_body_ext module_body_stmt module_body
+
+always_stmt_body_stmt blocking_assign ID EQUALS expr SEMI
+always_stmt_body_stmt nonblocking_assign ID LT EQUALS expr SEMI
+always_stmt_body_stmt if_else IF LPAREN expr RPAREN BEGIN always_stmt_body END ELSE BEGIN always_stmt_body END
+
+always_stmt_body always_stmt_body_base always_stmt_body_stmt
+always_stmt_body always_stmt_body_ext always_stmt_body_stmt always_stmt_body
+
 
 bit_range bit_range LBRACKET NUM COLON NUM RBRACKET
 
@@ -61,7 +83,6 @@ in_or_out in_or_out_out OUTPUT
 
 module_int module_int_single in_or_out bit_range ID
 module_int module_int_range in_or_out ID
-
 module_int_list module_int_list_ext module_int COMMA module_int_list
 module_int_list module_int_list_base module_int
 
