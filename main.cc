@@ -11,6 +11,8 @@
 #include <map>
 #include <set>
 
+#include <sys/time.h>
+
 using namespace std;
 
 
@@ -21,36 +23,6 @@ typedef unsigned RuleName;
 typedef unsigned GroupName;
 
 #define TYPEID_EXPERIMENT 0
-
-const vector<string> sLexicalTokenTypes = {
-	"NULL",
-	"ID",
-#if TYPEID_EXPERIMENT
-	"TYPEID",
-#endif
-	"NUM",
-	"INT",
-	"VOID",
-	"PLUS",
-	"MINUS",
-	"TIMES",
-	"DIVIDE",
-	"LPAREN",
-	"RPAREN",
-	"RETURN",
-	"SEMI",
-	"EQUALS",
-	"LBRACE",
-	"RBRACE",
-	"MOD",
-	"LT",
-	"GT",
-	"COMMA",
-	"DBLCOLON",
-	"TRUE",
-	"FALSE"
-};
-
 
 struct RawRule {
 	const string name;
@@ -63,80 +35,10 @@ struct RawRule {
 	}
 };
 
+// sLexicalTokenTypes
+// sRules
 
-const vector<RawRule> sRules = {
-	RawRule("expr", "paren_expr", {"LPAREN", "expr", "RPAREN"}),
-	RawRule("expr", "c_cast_expr", {"LPAREN", "type", "RPAREN", "expr"}),
-	RawRule("expr", "cpp_cast_expr", {"type", "LPAREN", "expr", "RPAREN"}),
-
-	RawRule("func_call_params", "func_call_params_ext", {"expr", "COMMA", "func_call_params"}),
- 	RawRule("func_call_params", "func_call_params_base", {"expr"}),
-
-	RawRule("expr", "templated_expr", {"type", "LT", "func_call_params", "GT"}),
-
-	RawRule("expr", "func_expr", {"ID", "LPAREN", "func_call_params", "RPAREN"}),
-	RawRule("expr", "func_expr_empty", {"ID", "LPAREN", "RPAREN"}),
-	RawRule("expr", "id_expr", {"ID"}),
-	RawRule("expr", "num_expr", {"NUM"}),
-	RawRule("bool", "true_expr", {"TRUE"}),
-	RawRule("bool", "false_expr", {"FALSE"}),
-	RawRule("expr", "bool_expr", {"bool"}),
-
-	RawRule("expr", "plus_expr", {"expr", "PLUS", "expr"}, 4),
-	RawRule("expr", "minus_expr", {"expr", "MINUS", "expr"}, 4),
-
-	RawRule("expr", "times_expr", {"expr", "TIMES", "expr"}, 3),
-	RawRule("expr", "divide_expr", {"expr", "DIVIDE", "expr"}, 3),
-	RawRule("expr", "modulo_expr", {"expr", "MOD", "expr"}, 3),
-
-	RawRule("expr", "gt_expr", {"expr", "GT", "expr"}, 6),
-	RawRule("expr", "lt_expr", {"expr", "LT", "expr"}, 6),
-
-	RawRule("expr", "static_ref_expr", {"expr", "DBLCOLON", "expr"}, 1),
-
-	RawRule("type", "void_type", {"VOID"}),
-	RawRule("type", "int_type", {"INT"}),
-#if !TYPEID_EXPERIMENT
-	RawRule("type", "id_type", {"ID"}),
-#else
-	RawRule("type", "id_type", {"TYPEID"}),
-#endif
-
-	RawRule("type", "static_ref_type", {"type", "DBLCOLON", "type"}),
-//	RawRule("type_template_params", "type_template_params_t", {"type"}),
- //    RawRule("type_template_params", "type_template_params_e", {"expr"}),
-	// RawRule("type_template_params", "type_template_params_ext", {"type_template_params", "COMMA", "type_template_params"}),
-
-	RawRule("type", "templated_type", {"type", "LT", "func_call_params", "GT"}),
-
-	RawRule("semi_expr", "semi_expr_decl", {"type", "ID", "SEMI"}),
-	RawRule("semi_expr", "semi_expr_decl_constructor_empty", {"type", "ID", "LPAREN", "RPAREN", "SEMI"}),
-	RawRule("semi_expr", "semi_expr_decl_constructor", {"type", "ID", "LPAREN", "func_call_params", "RPAREN", "SEMI"}),
-	RawRule("semi_expr", "semi_expr_decl_init", {"type", "ID", "EQUALS", "expr", "SEMI"}),
-	RawRule("semi_expr", "semi_expr_return", {"RETURN", "expr", "SEMI"}),
-	RawRule("semi_expr", "semi_expr", {"expr", "SEMI"}),
-
-	RawRule("semi_expr_list", "semi_expr_ext", {"semi_expr", "semi_expr_list"}),
-	RawRule("semi_expr_list", "semi_expr_base", {"semi_expr"}),
-
-	RawRule("func_param_list", "func_param_list_single", {"type", "ID"}),
-	RawRule("func_param_list", "func_param_list_ext", {"func_param_list", "COMMA", "func_param_list"}),
-
-	RawRule("func_def", "func_def_empty", {"type", "ID", "LPAREN", "RPAREN", "LBRACE", "semi_expr_list", "RBRACE"}),
-	RawRule("func_def", "func_def_params", {"type", "ID", "LPAREN", "func_param_list", "RPAREN", "LBRACE", "semi_expr_list", "RBRACE"}),
-	RawRule("func_def", "func_def_empty_empty", {"type", "ID", "LPAREN", "RPAREN", "LBRACE", "RBRACE"}),
-	RawRule("func_def", "func_def_params_empty", {"type", "ID", "LPAREN", "func_param_list", "RPAREN", "LBRACE", "RBRACE"}),
-
-	RawRule("top_base", "top_base_func", {"func_def"}),
-
-	RawRule("top_list", "top_list_base", {"top_base", "top_list"}),
-	RawRule("top_list", "top_list_ext", {"top_base"}),
-
-	RawRule("top", "top", {"top_list"}),
-//	RawRule("top", "top", {"func_def"}),
-//	RawRule("top", "top", {"type"}),
-//	RawRule("top", "top", {"expr"}),
-};
+#include "cpp_grammar.h"
 
 
 vector<string> BuildTokenTypes() {
@@ -444,35 +346,6 @@ struct Node {
 		return ostr.str();
 	}
 
-	bool operator!=(Node const&o)const {
-		return (!((*this) < o)) && (!(o < (*this)));
-	}
-/*
-	bool operator<(Node const&o)const {
-		if(rule.name != o.rule.name)
-			return rule.name < o.rule.name;
-		if(tokens != o.tokens)
-			return tokens < o.tokens;
-		assert(subs.size() == o.subs.size());
-		for(size_t i=0;i<subs.size();++i) {
-			int i_have = subs[i] ? 1 : 0;
-			int o_have = o.subs[i] ? 1 : 0;
-
-			if(i_have && (i_have == o_have)) {
-				if(*subs[i] != *o.subs[i]) {
-					return *subs[i] < *o.subs[i];
-				}
-			} else {
-				return i_have < o_have;
-			}
-		}
-		return next_token < o.next_token;
-	}
-*/
-	// TODO
-	bool operator<(Node const&o)const {
-		return ToString() < o.ToString();
-	}
 };
 
 
@@ -631,8 +504,6 @@ void ConsumeToken(Token const&next, list<Node> &candidates) {
 //	PrintCandidates(candidates);
 
 	// Next, step up
-	// TODO: Do this before or after expanding?
-	// TODO: Do this for complete only, or all?
 	list<Node> expanded_list;
 	for(list<Node>::iterator it = candidates.begin();it != candidates.end();++it) {
 		StepUpCandidate(*it, expanded_list);
@@ -669,31 +540,15 @@ void ConsumeToken(Token const&next, list<Node> &candidates) {
 		it->advance(next);
 	}
 
-	// fprintf(stderr, "Remove ambiguity:\n");
-	// Resolve ambiguity & lower number of candidates by leaving only one complete
-	// TODO: This doesn't really work. The whole tree is not complete until the last token
-	if(false) {
-		bool found_complete = false;
-		unsigned n_ambiguities_removed = 0;
-		for(list<Node>::iterator it = candidates.begin();it != candidates.end();) {
-			if(it->complete()) {
-				if(found_complete) {
-					it = candidates.erase(it);
-					++n_ambiguities_removed;
-				} else {
-					found_complete = true;
-					++it;
-				}
-			} else {
-				++it;
-			}
-		}
 
-		if(n_ambiguities_removed)
-			fprintf(stderr, "WARNING: Removed %i ambiguities\n", n_ambiguities_removed);
-	}
 }
 
+double doubletime() {
+	struct timeval tv;
+	struct timezone tz;
+	gettimeofday(&tv, &tz);
+	return tv.tv_sec + double(tv.tv_usec) / 1000000.0;
+}
 
 int main() {
 	const Token top_token = GetTokenTypeId("top");
@@ -711,12 +566,15 @@ int main() {
 	// Parse
 
 	// TOO SLOW
+
 	char in_str[] = 
 "   void PopCount(\n"
 "       ac_int<ac::log2_ceil<N + 1>::val, false> in) {\n"
 "  }";
 
-	// char in_str[] = "int foo() { return a+b*c>1;} int bar() { return 11;} ";
+
+//	char in_str[] = "int add1(int x) { return x + 1; }";
+//	char in_str[] = "int foo() { return a+b*c>1;} int bar() { return 11;} ";
 	// char in_str[] = "int foo() { int i((int) adouble);} ";
 	//char in_str[] = "void foo() {A a(B(x));}";
 
@@ -725,6 +583,8 @@ int main() {
 	yyset_in(input);
 
 	fprintf(stderr, "--- Parsing starts ---\n");
+
+	const double start_time = doubletime();
 
 	while(true) {
 		Token tok = yylex();
@@ -751,6 +611,11 @@ int main() {
 			exit(1);
 		}
 	}
+
+	const double end_time = doubletime();
+
+	fprintf(stderr, "Parsing time %fms\n", (end_time-start_time) * 1000.0);
+
 
 	// Erase incomplete
 	for(list<Node>::iterator it = candidates.begin();it != candidates.end();) {

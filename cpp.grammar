@@ -1,0 +1,98 @@
+/LEX/
+
+%option noyywrap
+
+alpha [a-zA-Z_]
+digit [0-9]
+
+%%
+[ \t]		;
+[ \n]   { yylineno = yylineno + 1;}
+"void"	return LexGetTokenInstName("VOID", "");
+"int"	return LexGetTokenInstName("INT", "");
+"true"	return LexGetTokenInstName("TRUE", "");
+"false"	return LexGetTokenInstName("FALSE", "");
+"return"	return LexGetTokenInstName("RETURN", "");
+{digit}+       return LexGetTokenInstName("NUM", yytext);
+{alpha}({alpha}|{digit})* return LexGetTokenInstName("ID", yytext);
+"+"     return LexGetTokenInstName("PLUS", "");
+"-"     return LexGetTokenInstName("MINUS", "");
+"*"     return LexGetTokenInstName("TIMES", "");
+"/"     return LexGetTokenInstName("DIVIDE", "");
+"%"     return LexGetTokenInstName("MOD", "");
+"="     return LexGetTokenInstName("EQUALS", "");
+";"     return LexGetTokenInstName("SEMI", "");
+"("     return LexGetTokenInstName("LPAREN", "");
+")"     return LexGetTokenInstName("RPAREN", "");
+"{"     return LexGetTokenInstName("LBRACE", "");
+"}"     return LexGetTokenInstName("RBRACE", "");
+"<"     return LexGetTokenInstName("LT", "");
+">"     return LexGetTokenInstName("GT", "");
+","     return LexGetTokenInstName("COMMA", "");
+"::"     return LexGetTokenInstName("DBLCOLON", "");
+%%
+
+/GRAMMAR/
+
+expr paren_expr LPAREN expr RPAREN
+expr c_cast_expr LPAREN type RPAREN expr
+expr cpp_cast_expr type LPAREN expr RPAREN
+
+func_call_params func_call_params_ext expr COMMA func_call_params
+func_call_params func_call_params_base expr
+
+expr templated_expr type LT func_call_params GT
+
+expr func_expr ID LPAREN func_call_params RPAREN
+expr func_expr_empty ID LPAREN RPAREN
+expr id_expr ID
+expr num_expr NUM
+bool true_expr TRUE
+bool false_expr FALSE
+expr bool_expr bool
+
+4 expr plus_expr expr PLUS expr
+4 expr minus_expr expr MINUS expr
+
+3 expr times_expr expr TIMES expr
+3 expr divide_expr expr DIVIDE expr
+3 expr modulo_expr expr MOD expr
+
+6 expr gt_expr expr GT expr
+6 expr lt_expr expr LT expr
+
+1 expr static_ref_expr expr DBLCOLON expr
+
+type void_type VOID
+type int_type INT
+
+type id_type ID
+
+type static_ref_type type DBLCOLON type
+
+type templated_type type LT func_call_params GT
+
+semi_expr semi_expr_decl type ID SEMI
+semi_expr semi_expr_decl_constructor_empty type ID LPAREN RPAREN SEMI
+semi_expr semi_expr_decl_constructor type ID LPAREN func_call_params RPAREN SEMI
+semi_expr semi_expr_decl_init type ID EQUALS expr SEMI
+semi_expr semi_expr_return RETURN expr SEMI
+semi_expr semi_expr expr SEMI
+
+semi_expr_list semi_expr_ext semi_expr semi_expr_list
+semi_expr_list semi_expr_base semi_expr
+
+func_param_list func_param_list_single type ID
+func_param_list func_param_list_ext func_param_list COMMA func_param_list
+
+func_def func_def_empty type ID LPAREN RPAREN LBRACE semi_expr_list RBRACE
+func_def func_def_params type ID LPAREN func_param_list RPAREN LBRACE semi_expr_list RBRACE
+func_def func_def_empty_empty type ID LPAREN RPAREN LBRACE RBRACE
+func_def func_def_params_empty type ID LPAREN func_param_list RPAREN LBRACE RBRACE
+
+top_base top_base_func func_def
+
+top_list top_list_base top_base top_list
+top_list top_list_ext top_base
+top top top_list
+
