@@ -550,7 +550,8 @@ double doubletime() {
 	return tv.tv_sec + double(tv.tv_usec) / 1000000.0;
 }
 
-int main() {
+int main(int argc, const char **argv) {
+
 	const Token top_token = GetTokenTypeId("top");
 	if(!top_token) {
 		fprintf(stderr, "No top rules found!\n");
@@ -563,23 +564,21 @@ int main() {
 	list<Node> candidates;
 	candidates.push_back(top_rule_inst);
 
-	// Parse
+	// Parse	
+	if(argc != 2) {
+		fprintf(stderr, "Usage: parse file\n");
+		return 1;
+	}
 
-	// TOO SLOW
+	const char*input_path = argv[1];
 
-	char in_str[] = 
-"   void PopCount(\n"
-"       ac_int<ac::log2_ceil<N + 1>::val, false> in) {\n"
-"  }";
+	FILE* input = ::fopen(input_path, "rb");
 
+	if(input == 0) {
+		fprintf(stderr, "Couldn't open input file: %s\n",
+			input_path);
+	}
 
-//	char in_str[] = "int add1(int x) { return x + 1; }";
-//	char in_str[] = "int foo() { return a+b*c>1;} int bar() { return 11;} ";
-	// char in_str[] = "int foo() { int i((int) adouble);} ";
-	//char in_str[] = "void foo() {A a(B(x));}";
-
-	FILE *input = fmemopen(in_str, strlen(in_str)+1, "r");
-	
 	yyset_in(input);
 
 	fprintf(stderr, "--- Parsing starts ---\n");
