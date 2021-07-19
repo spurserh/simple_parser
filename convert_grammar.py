@@ -39,7 +39,9 @@ def main():
 		print("Coudn't find /GRAMMAR/ divder")
 
 	lex_lines = lines[1:grammar_divider_index]
-	grammar_lines = lines [grammar_divider_index+1:]
+	grammar_lines = lines[grammar_divider_index+1:]
+
+	grammar_lines = list(filter(lambda s: not s.startswith("#"), grammar_lines))
 	
 	# Output lex file
 	with open(lex_out_path, "w") as f:

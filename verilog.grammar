@@ -52,6 +52,7 @@ digit [0-9]
 top_list top_list_base top_base top_list
 top_list top_list_ext top_base
 top top top_list
+#top top always_stmt_body_stmt
 
 top_base top_base_func module_def
 

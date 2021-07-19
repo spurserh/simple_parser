@@ -16,13 +16,18 @@
 using namespace std;
 
 
+double doubletime() {
+	struct timeval tv;
+	struct timezone tz;
+	gettimeofday(&tv, &tz);
+	return tv.tv_sec + double(tv.tv_usec) / 1000000.0;
+}
+
 // For all of these, 0 = NULL
 typedef unsigned TokenType;
 typedef unsigned Token;
 typedef unsigned RuleName;
 typedef unsigned GroupName;
-
-#define TYPEID_EXPERIMENT 0
 
 struct RawRule {
 	const string name;
@@ -472,7 +477,9 @@ void StepUpCandidate(Node const&orig, list<Node> &expanded_list) {
 }
 
 void ConsumeToken(Token const&next, list<Node> &candidates) {
-	// fprintf(stderr, "Before erase empty:\n");
+	fprintf(stderr, "Before erase empty: %i\n", candidates.size());
+
+	double start_time = doubletime();
 
 	// Erase empty
 	for(list<Node>::iterator it = candidates.begin();it != candidates.end();) {
@@ -483,7 +490,10 @@ void ConsumeToken(Token const&next, list<Node> &candidates) {
 		}
 	}
 
-	// fprintf(stderr, "Before expand:\n");
+	fprintf(stderr, "Before expand: %i, took %fms\n", 
+			candidates.size(),
+			(doubletime()-start_time)*1000);
+	start_time = doubletime();
 
 	// First expand, recursively but without self-recursion
 	// TODO: Do this before or after stepping up?
@@ -501,8 +511,12 @@ void ConsumeToken(Token const&next, list<Node> &candidates) {
 	}
 
 	// TODO: Prevent duplicates
-	// fprintf(stderr, "Before step up:\n");
+	fprintf(stderr, "Before step up: %i, took %fms\n",
+			candidates.size(),
+			(doubletime()-start_time)*1000);
+
 //	PrintCandidates(candidates);
+	start_time = doubletime();
 
 	// Next, step up
 	list<Node> expanded_list;
@@ -515,8 +529,12 @@ void ConsumeToken(Token const&next, list<Node> &candidates) {
 	}
 
 	// TODO: Prevent duplicates
-	 // fprintf(stderr, "------- Before filter:\n");
+	fprintf(stderr, "------- Before filter: %i, took %fms\n",
+			candidates.size(),
+			(doubletime()-start_time)*1000);
 	// PrintCandidates(candidates);
+
+	start_time = doubletime();
 
 	// Now filter
 	for(list<Node>::iterator it = candidates.begin();it != candidates.end();) {
@@ -534,22 +552,21 @@ void ConsumeToken(Token const&next, list<Node> &candidates) {
 		}
 	}
 
-	// fprintf(stderr, "Before advance:\n");
+	fprintf(stderr, "Before advance: %i, took %fms\n",
+			candidates.size(),
+			(doubletime()-start_time)*1000);
+
+	start_time = doubletime();
 
 	// Now advance
 	for(list<Node>::iterator it = candidates.begin();it != candidates.end();++it) {
 		it->advance(next);
 	}
 
-
+	fprintf(stderr, "Advance took %fms\n",
+			(doubletime()-start_time)*1000);
 }
 
-double doubletime() {
-	struct timeval tv;
-	struct timezone tz;
-	gettimeofday(&tv, &tz);
-	return tv.tv_sec + double(tv.tv_usec) / 1000000.0;
-}
 
 static double sStartTime = 0;
 
@@ -602,18 +619,20 @@ int main(int argc, const char **argv) {
 		}
 
 		string tok_type_name = GetTokenInstTypeName(tok);
-#if TYPEID_EXPERIMENT
-		const string content = GetTokenInstContent(tok);
-		if(tok_type_name == "ID" && (content == "ac" || content == "ac_int" || content == "log2_ceil")) {
-			tok = LexGetTokenInstName("TYPEID", content.c_str());
-		}
-#endif
 
 		fprintf(stderr, "\n\nNext %s\n", TokenToString(tok).c_str());
 
 		fprintf(stderr, "Candidates (%i):\n", candidates.size());
-	//	PrintCandidates(candidates);
+		//PrintCandidates(candidates);
+		const double before_consume = doubletime();
 		ConsumeToken(tok, candidates);
+		const double after_consume = doubletime();
+
+		const double duration_ms = (after_consume-before_consume)*1000.0;
+
+		if(duration_ms > 1) {
+			fprintf(stderr, "-- Consume took %fms\n", duration_ms);
+		}
 
 		if(candidates.size() == 0) {
 			// TODO: Report line number in preprocessed file
@@ -622,6 +641,8 @@ int main(int argc, const char **argv) {
 		}
 	}
 
+	fprintf(stderr, "Final Candidates (count = %i):\n", int(candidates.size()));
+//	PrintCandidates(candidates);
 
 
 	// Erase incomplete

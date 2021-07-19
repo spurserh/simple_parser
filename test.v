@@ -1,3 +1,4 @@
+
 module up_counter(
   input clk,
   input rst,
@@ -13,17 +14,11 @@ always @(posedge clk)
 begin
 
 	if (rst) begin
-//		val <= 3'b0;
 		val <= 0;
 	end else begin
 		val <= val + 1;
 	end
-
-
-//	val <= val + 1;
 end
-
-
 
 
 endmodule 
