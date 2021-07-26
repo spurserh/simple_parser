@@ -24,11 +24,11 @@ using namespace std;
 using std::shared_ptr;
 using std::unique_ptr;
 
-#define DEBUG 1
+#define DEBUG 0
 #define PROFILING 0
 #define SHOW_STEP_DOWNS 1
-//#define PROFILING 1
-//#define DO_STEP_UP
+#define SHOW_STEP_UPS 0
+
 
 double doubletime() {
 	struct timeval tv;
@@ -154,7 +154,7 @@ const TokenType GetTokenInstType(Token t) {
 
 bool TokenIsLexical(Token t) {
 	TokenType type = GetTokenInstType(t);
-	return (type>0) && (type<=sLexicalTokenTypes.size());
+	return (type>0) && (type<sLexicalTokenTypes.size());
 }
 
 const char*GetTokenInstTypeName(Token t) {
@@ -172,8 +172,24 @@ struct Rule {
 	const unsigned priority; // 0 is no priority
 	absl::InlinedVector<Token, sInlinedRuleLen> pattern;
 
-	Rule(Token token_name, RuleName name, int priority, absl::InlinedVector<Token, sInlinedRuleLen> pattern)
-	  : token_name(token_name), name(name), priority(priority), pattern(pattern) {
+	// Handy values
+	const unsigned first_non_lexical_index;
+
+	Rule(Token token_name, 
+		 RuleName name,
+		 int priority,
+		 absl::InlinedVector<Token, sInlinedRuleLen> pattern)
+	  : token_name(token_name), name(name), priority(priority), pattern(pattern),
+	    first_non_lexical_index(FindFirstNonLexical(pattern)) {
+	}
+
+	static unsigned FindFirstNonLexical(absl::InlinedVector<Token, sInlinedRuleLen> const&pattern) {
+		for(unsigned i=0;i<pattern.size();++i) {
+			if(!TokenIsLexical(pattern[i])) {
+				return i;
+			}
+		}
+		return pattern.size();
 	}
 };
 
@@ -267,7 +283,6 @@ typedef std::multimap<StepContext, StepDownStack> StepDownMap;
 StepDownMap sStepDownMap;
 
 
-
 bool StackContainsToken(StepDownStack const&stack, Token token) {
 	for(RuleName ruleId : stack) {
 		auto found = sRulesByRuleName.find(ruleId);
@@ -287,7 +302,7 @@ void CreateStepDowns(RuleName ruleId, const Token needed_rule, StepDownStack sta
 
 	Rule const&rule = sRulesByRuleName.find(ruleId)->second;
 
-	assert(rule.pattern.size() > 0);
+	assert(rule.pattern.size() >= 1);
 	const Token first_token = rule.pattern[0];
 
   	if(TokenIsLexical(first_token)) {
@@ -322,6 +337,76 @@ void CreateStepDowns() {
 	}
 }
 
+#if 1
+
+struct StepUpAction {
+	RuleName step_up_rule_id;
+
+	StepDownStack then_step_down;
+};
+
+typedef std::multimap<StepContext, StepUpAction> StepUpMap;
+StepUpMap sStepUpMap;
+
+// Must create step downs first
+void CreateStepUps(RuleName ruleId, const Token needed_rule) {
+	assert(sRulesByRuleName.find(ruleId) != sRulesByRuleName.end());
+
+	Rule const&rule = sRulesByRuleName.find(ruleId)->second;
+
+	if(rule.pattern.size() < 2) {
+		return;
+	}
+
+	const Token second_token = rule.pattern[1];
+  	const Token first_token = rule.pattern[0];
+
+  	if(first_token != needed_rule) {
+  		return;
+  	}
+
+	StepUpAction action;
+	action.step_up_rule_id = ruleId;
+
+  	if(TokenIsLexical(second_token)) {
+		StepContext ctx;
+		ctx.lexed = GetTokenInstType(second_token);
+		ctx.needed_rule = needed_rule;
+		sStepUpMap.insert(StepUpMap::value_type(ctx, action));
+  	} else {
+		// Slow search doesn't matter, this is just a preparatory action
+		for(auto step_down_it = sStepDownMap.begin();
+			step_down_it != sStepDownMap.end();
+			++step_down_it) {
+			const StepContext& down_ctx = step_down_it->first;
+			const StepDownStack& stack = step_down_it->second;
+
+			if(down_ctx.needed_rule != second_token) {
+				continue;
+			}
+
+			StepContext ctx;
+			ctx.lexed = down_ctx.lexed;
+			ctx.needed_rule = needed_rule;
+
+			action.then_step_down = stack;
+			sStepUpMap.insert(StepUpMap::value_type(ctx, action));
+
+		}
+  	}
+
+}
+#endif
+
+void CreateStepUps() {
+	for(RuleName rule_name = 1;rule_name <= sRules.size();++rule_name) {
+		auto found = sRulesByRuleName.find(rule_name);
+		assert(found != sRulesByRuleName.end());
+		Rule const&rule = found->second;
+
+		CreateStepUps(rule_name, rule.token_name);
+	}
+}
 
 
 enum NodeId {
@@ -445,23 +530,6 @@ struct Candidate {
 		return GetRuleName(node.rule->name);
  	}
 
- 	void get_parent_stack(NodeId nid, NodeIdVector &output)const {
- 		if(nid == NodeId_Null) {
- 			return;
- 		}
-
- 		while(true) {
-			Node const*node_ptr = nodes_by_id.find(nid);
-			assert(node_ptr);
-			Node const&node = *node_ptr;
-			output.push_back(nid);
-			if(!node.parent) {
-				return;
-			}
-			nid = node.parent;
- 		}
- 	}
-
  	Node const&get_node(NodeId nid)const {
 		Node const*node_ptr = nodes_by_id.find(nid);
 		assert(node_ptr);
@@ -470,68 +538,142 @@ struct Candidate {
  	}
 
 
-	void branch(Token tok,
+	void step_down(Token tok,
 				CandidateVector& successors) {
 
-		assert(work_id != NodeId_Null);
-		Node const&node = get_node(work_id);
+		const NodeId incomplete_work_id = get_incomplete_ancestor_or_top(work_id);
+
+		const NodeId step_down_id = incomplete_work_id;
 
 		// Step down
-		if(!is_complete(work_id)) {
+		if(!is_complete(step_down_id)) {
+			assert(step_down_id != NodeId_Null);
+			Node const&node = get_node(step_down_id);
+
 			const Token next_token = node.next_token_in_pattern();
 
-			fprintf(stderr, ">>> branch on [%i] rule %s next %s\n",
-					(int)work_id,
-					GetRuleName(node.rule->name),
-					TokenToString(next_token).c_str());
-
+			// Need this check?
 			if(IsRuleTokenName(next_token)) {
 				StepContext step_down_ctx;
 
 				step_down_ctx.lexed = GetTokenInstType(tok);
 				step_down_ctx.needed_rule = next_token;
 
-		#if DEBUG
-				fprintf(stderr, "Step down on %s rule %s\n", 
-					GetTokenTypeName(step_down_ctx.lexed),
-					TokenToString(next_token).c_str());
-		#endif
-
 
 				auto found_step_downs_lower = sStepDownMap.lower_bound(step_down_ctx);
 				auto found_step_downs_upper = sStepDownMap.upper_bound(step_down_ctx);
 
-				fprintf(stderr, "---- Step down\n");
+		#if DEBUG
+				fprintf(stderr, "Step down on %s rule %s: %s\n", 
+					GetTokenTypeName(step_down_ctx.lexed),
+					TokenToString(step_down_ctx.needed_rule).c_str());
+		#endif
+
+
 				for(auto step_down_it = found_step_downs_lower;
 					step_down_it != found_step_downs_upper;
 					++step_down_it) {
 					const StepDownStack& stack = step_down_it->second;
-					
-					fprintf(stderr, " -- stack %i\n", (int)stack.size());
 
 					// Create stack of parents, that's one candidate
 					Candidate new_cand(*this);
-					NodeId last_nid = work_id;
-					for(const RuleName step_down_rule_id : stack) {
-						auto found_rule = sRulesByRuleName.find(step_down_rule_id);
-						assert(found_rule != sRulesByRuleName.end());
-						Rule const&rule = found_rule->second;
 
-						Node sub_node(rule, last_nid);
-						const NodeId sub_nid = new_cand.add_node(sub_node);
-
-				  		new_cand.nodes_by_id = new_cand.nodes_by_id.update(last_nid, [&](Node node) {
-				  			node.parsed_tokens.push_back(sub_nid);
-				  			return node;
-				  		});
-
-				  		last_nid = sub_nid;
-					}
-//					new_cand.work_id = new_cand.get_incomplete_ancestor_or_top(last_nid);
-					new_cand.work_id = last_nid;
+					new_cand.work_id = new_cand.create_step_down_stack(stack, step_down_id);
 
 			  		successors.push_back(new_cand);
 				}
+			}
+		}
+
+ 	}
+
+ 	NodeId create_step_down_stack(StepDownStack const&stack, NodeId parent) {
+		NodeId last_nid = parent;
+
+		for(const RuleName step_down_rule_id : stack) {
+			auto found_rule = sRulesByRuleName.find(step_down_rule_id);
+			assert(found_rule != sRulesByRuleName.end());
+			Rule const&rule = found_rule->second;
+
+			Node sub_node(rule, last_nid);
+			const NodeId sub_nid = add_node(sub_node);
+
+			nodes_by_id = nodes_by_id.update(last_nid, [&](Node node) {
+				node.parsed_tokens.push_back(sub_nid);
+				return node;
+			});
+
+			last_nid = sub_nid;
+		}
+
+		return last_nid;
+ 	}
+
+	void step_up(Token tok,
+				 CandidateVector& successors) {
+
+		for(NodeId nid = work_id;nid != NodeId_Null;nid = get_node(nid).parent) {
+	
+			if(!is_complete(nid)) {
+				break;
+			}
+			if(nid == NodeId_Top) {
+				break;
+			}
+
+			assert(nid != NodeId_Null);
+			Node const&node = get_node(nid);
+
+			// Complete, step up
+			StepContext step_up_ctx;
+
+			step_up_ctx.lexed = GetTokenInstType(tok);
+			step_up_ctx.needed_rule = node.rule->token_name;
+
+		#if DEBUG
+				fprintf(stderr, "Step up on %s rule %s\n", 
+					GetTokenTypeName(step_up_ctx.lexed),
+					TokenToString(step_up_ctx.needed_rule).c_str());
+		#endif
+
+			auto found_step_ups_lower = sStepUpMap.lower_bound(step_up_ctx);
+			auto found_step_ups_upper = sStepUpMap.upper_bound(step_up_ctx);
+
+			for(auto step_up_it = found_step_ups_lower;
+				step_up_it != found_step_ups_upper;
+				++step_up_it) {
+				const StepUpAction& action = step_up_it->second;
+				const RuleName step_up_rule_id = action.step_up_rule_id;
+
+				auto found_rule = sRulesByRuleName.find(step_up_rule_id);
+				assert(found_rule != sRulesByRuleName.end());
+				Rule const&rule = found_rule->second;
+
+				Candidate new_cand(*this);
+
+				Node new_node(rule, node.parent);
+				new_node.parsed_tokens.push_back(Node::ParsedToken(nid));
+				const NodeId new_nid = new_cand.add_node(new_node);
+
+
+		  		new_cand.nodes_by_id = new_cand.nodes_by_id.update(nid, [&](Node node) {
+		  			node.parent = new_nid;
+		  			return node;
+		  		});
+		  		new_cand.nodes_by_id = new_cand.nodes_by_id.update(node.parent, [&](Node node) {
+		  			const unsigned idx = node.parsed_tokens.size()-1;
+		  			assert(node.parsed_tokens[idx].sub == nid);
+		  			node.parsed_tokens[idx] = Node::ParsedToken(new_nid);
+		  			return node;
+		  		});
+
+				if(action.then_step_down.size() == 0) {
+			  		new_cand.work_id = new_nid;
+			  	} else {
+			  		new_cand.work_id = new_cand.create_step_down_stack(action.then_step_down, new_nid);
+			  	}
+
+				successors.push_back(new_cand);
 			}
 		}
 
@@ -553,45 +695,27 @@ struct Candidate {
  	}
 
 	bool consume(Token tok) {
-		return consume(NodeId_Top, tok);
-	}
 
-	bool consume(NodeId nid,
-				 Token tok) {
-		
-		if(!is_complete(nid)) {
-			// Check if already working on an incomplete sub-node
-			{
-				Node const*node_ptr = nodes_by_id.find(nid);
-				assert(node_ptr);
-				Node const&node = *node_ptr;
+		// Find first incomplete
+		for(NodeId nid = work_id;nid != NodeId_Null;nid = get_node(nid).parent) {
+			if(!is_complete(nid)) {
+				const TokenType tok_type = GetTokenInstType(tok);
 
-				// Check if sub-node already created
-				if(node.parsed_tokens.size() > 0) {
-			 		Node::ParsedToken const&last = node.parsed_tokens.back();
+				const Token next_token_this_node = next_token_in_pattern(nid);
 
-			 		if(last.sub && !is_complete(last.sub)) {
-			 			return consume(last.sub, tok);
-			 		}
-			 	}
-			 }
+			  	if(GetTokenInstType(next_token_this_node) == tok_type) {
+					//fprintf(stderr, "consume at %s\n", ToString(nid).c_str());
 
-			const TokenType tok_type = GetTokenInstType(tok);
-
-			const Token next_token_this_node = next_token_in_pattern(nid);
-
-		  	if(GetTokenInstType(next_token_this_node) == tok_type) {
-
-		  		nodes_by_id = nodes_by_id.update(nid, [&](Node node) {
-		  			node.parsed_tokens.push_back(tok);
-		  			return node;
-		  		});
-		  		
-	  			work_id = get_incomplete_ancestor_or_top(nid);
-
-		  		return true;
-		  	}
-
+			  		nodes_by_id = nodes_by_id.update(nid, [&](Node node) {
+			  			node.parsed_tokens.push_back(tok);
+			  			return node;
+			  		});
+			  		
+		  			work_id = nid;
+			  		return true;
+			  	}
+			  	break;
+			}
 		}
 
 		return false;
@@ -718,22 +842,37 @@ void PrintCandidates(CandidateVector const&candidates, bool pretty = false) {
 void ConsumeToken(Token tok, CandidateVector &candidates) {
 	CandidateVector prev_candidates = candidates;
 	candidates.clear();
+
+	CandidateVector branched_down;
+	CandidateVector branched_up;
+
 	for(Candidate &cand : prev_candidates) {
 		if(cand.consume(tok)) {
 			candidates.push_back(cand);
 		} else {
-			CandidateVector branched;
-			cand.branch(tok, branched);
-			fprintf(stderr, "Branched to:\n");
-			PrintCandidates(branched);
-			
-			for(Candidate &branched_cand : branched) {
-				if(branched_cand.consume(tok)) {
-					candidates.push_back(branched_cand);
-				} else {
-					assert(!"Successors should always be able to consume the next token");
-				}
-			}
+			cand.step_down(tok, branched_down);
+			cand.step_up(tok, branched_up);
+		}
+	}
+
+#if !PROFILING
+	fprintf(stderr, "Branched down to %i:\n", (int)branched_down.size());
+	PrintCandidates(branched_down);
+	fprintf(stderr, "Branched up to %i:\n", (int)branched_up.size());
+	PrintCandidates(branched_up);
+#endif
+	for(Candidate &branched_cand : branched_down) {
+		if(branched_cand.consume(tok)) {
+			candidates.push_back(branched_cand);
+		} else {
+			assert(!"Successors should always be able to consume the next token");
+		}
+	}
+	for(Candidate &branched_cand : branched_up) {
+		if(branched_cand.consume(tok)) {
+			candidates.push_back(branched_cand);
+		} else {
+			assert(!"Successors should always be able to consume the next token");
 		}
 	}
 }
@@ -760,9 +899,19 @@ int main(int argc, const char **argv) {
 	CreateStepDowns();
 	const double end_create_step_downs_time = doubletime();
 
-	fprintf(stderr, "Time to generate step-downs %fms\n", 1000.0*(end_create_step_downs_time - start_create_step_downs_time));
+	const double start_create_step_ups_time = doubletime();
+	CreateStepUps();
+	const double end_create_step_ups_time = doubletime();
+
+
+	fprintf(stderr, "Time to generate step-downs %fms step-ups %fms\n", 
+		1000.0*(end_create_step_downs_time - start_create_step_downs_time),
+		1000.0*(end_create_step_ups_time - start_create_step_ups_time));
+
 	fprintf(stderr, "Step downs count: %i\n", (int)sStepDownMap.size());
+	fprintf(stderr, "Step ups count: %i\n", (int)sStepUpMap.size());
 #if SHOW_STEP_DOWNS
+	fprintf(stderr, "------ step downs -----\n");
 	for(auto const&step_down_val : sStepDownMap) {
 		const StepContext& ctx = step_down_val.first;
 		const StepDownStack& stack = step_down_val.second;
@@ -772,6 +921,45 @@ int main(int argc, const char **argv) {
 		for(RuleName ruleId : stack) {
 			fprintf(stderr, "%s ", GetRuleName(ruleId));
 		}
+		fprintf(stderr, "\n");
+		/*
+		fprintf(stderr, "-- ");
+		for(RuleName ruleId : stack) {
+			fprintf(stderr, "%s ", TokenToString(sRulesByRuleName.find(ruleId)->second.token_name).c_str());
+		}
+		fprintf(stderr, "\n");
+		*/
+	}
+#endif
+#if SHOW_STEP_UPS
+	fprintf(stderr, "------ step ups -----\n");
+	for(auto const&step_up_val : sStepUpMap) {
+		const StepContext& ctx = step_up_val.first;
+		const StepUpAction& action = step_up_val.second; 
+		//RuleName rule_name = step_up_val.second;
+		RuleName rule_name = action.step_up_rule_id;
+
+		fprintf(stderr, "  (tok %s, rule up %s): ",
+			GetTokenTypeName(ctx.lexed), 
+			TokenToString(ctx.needed_rule).c_str());
+
+		assert(sRulesByRuleName.find(rule_name) != sRulesByRuleName.end());
+
+//		for(Token tok : sRulesByRuleName.find(rule_name)->second.pattern) {
+		const auto& pattern = sRulesByRuleName.find(rule_name)->second.pattern;
+		for(unsigned pi=0;pi<pattern.size();++pi) {
+			if((action.then_step_down.size() > 0) && (pi==1)) {
+				fprintf(stderr, "{");
+				for(RuleName step_down_rule : action.then_step_down) {
+					fprintf(stderr, "%s ", GetRuleName(step_down_rule));
+				}
+				fprintf(stderr, "} ");
+			} else {
+				const Token tok = pattern[pi];
+				fprintf(stderr, "%s ", TokenToString(tok).c_str());
+			}
+		}
+		
 		fprintf(stderr, "\n");
 		/*
 		fprintf(stderr, "-- ");
@@ -839,7 +1027,8 @@ int main(int argc, const char **argv) {
 			TokenToString(tok).c_str(), (int)candidates.size());
 #endif
 
-#if DEBUG
+#if !PROFILING
+//#if 1
 		PrintCandidates(candidates);
 		CandidateVector dbg_candidates = candidates;
 #endif

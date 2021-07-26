@@ -38,13 +38,13 @@ expr paren_expr LPAREN expr RPAREN
 expr c_cast_expr LPAREN type RPAREN expr
 expr cpp_cast_expr type LPAREN expr RPAREN
 
-func_call_params func_call_params_ext expr COMMA func_call_params
 func_call_params func_call_params_base expr
+func_call_params func_call_params_ext func_call_params COMMA expr 
 
 expr templated_expr type LT func_call_params GT
 
-expr func_expr ID LPAREN func_call_params RPAREN
-expr func_expr_empty ID LPAREN RPAREN
+expr func_expr expr LPAREN func_call_params RPAREN
+expr func_expr_empty expr LPAREN RPAREN
 expr id_expr ID
 expr num_expr NUM
 bool true_expr TRUE
@@ -79,11 +79,12 @@ semi_expr semi_expr_decl_init type ID EQUALS expr SEMI
 semi_expr semi_expr_return RETURN expr SEMI
 semi_expr semi_expr expr SEMI
 
-semi_expr_list semi_expr_ext semi_expr semi_expr_list
+semi_expr_list semi_expr_ext semi_expr_list semi_expr
 semi_expr_list semi_expr_base semi_expr
 
-func_param_list func_param_list_single type ID
-func_param_list func_param_list_ext func_param_list COMMA func_param_list
+func_param_list_base func_param_list_single type ID
+func_param_list func_param_list_base func_param_list_base
+func_param_list func_param_list_ext func_param_list COMMA func_param_list_base
 
 func_def func_def_empty type ID LPAREN RPAREN LBRACE semi_expr_list RBRACE
 func_def func_def_params type ID LPAREN func_param_list RPAREN LBRACE semi_expr_list RBRACE
@@ -92,7 +93,7 @@ func_def func_def_params_empty type ID LPAREN func_param_list RPAREN LBRACE RBRA
 
 top_base top_base_func func_def
 
-top_list top_list_base top_base top_list
+top_list top_list_base top_list top_base
 top_list top_list_ext top_base
 top top top_list
-
+#top top type

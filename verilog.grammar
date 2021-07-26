@@ -45,16 +45,26 @@ digit [0-9]
 "["     return LexGetTokenInstName("LBRACKET", "");
 "]"     return LexGetTokenInstName("RBRACKET", "");
 ","     return LexGetTokenInstName("COMMA", "");
+"?"		return LexGetTokenInstName("QUESTION", "");
 %%
 
 /GRAMMAR/
 
-top_list top_list_base top_base top_list
-top_list top_list_ext top_base
-top top top_list
-#top top always_stmt_body_stmt
 
 top_base top_base_func module_def
+top_list top_list_base top_base
+top_list top_list_ext top_list top_base
+
+#top_list top_list_base module_def
+#top_list top_list_ext top_list module_def
+
+
+top top top_list
+#top top expr
+#top top module_def
+#top top module_body
+#top top module_int_list
+
 
 module_def module_def MODULE ID LPAREN module_int_list RPAREN SEMI module_body ENDMODULE
 
@@ -67,14 +77,14 @@ module_body_stmt continuous_assign ASSIGN ID EQUALS ID SEMI
 module_body_stmt always_block ALWAYS AT LPAREN POSEDGE ID RPAREN BEGIN always_stmt_body END
 
 module_body module_body_base module_body_stmt
-module_body module_body_ext module_body_stmt module_body
+module_body module_body_ext module_body module_body_stmt
 
 always_stmt_body_stmt blocking_assign ID EQUALS expr SEMI
 always_stmt_body_stmt nonblocking_assign ID LT EQUALS expr SEMI
 always_stmt_body_stmt if_else IF LPAREN expr RPAREN BEGIN always_stmt_body END ELSE BEGIN always_stmt_body END
 
 always_stmt_body always_stmt_body_base always_stmt_body_stmt
-always_stmt_body always_stmt_body_ext always_stmt_body_stmt always_stmt_body
+always_stmt_body always_stmt_body_ext always_stmt_body always_stmt_body_stmt
 
 
 bit_range bit_range LBRACKET NUM COLON NUM RBRACKET
@@ -84,7 +94,7 @@ in_or_out in_or_out_out OUTPUT
 
 module_int module_int_single in_or_out bit_range ID
 module_int module_int_range in_or_out ID
-module_int_list module_int_list_ext module_int COMMA module_int_list
+module_int_list module_int_list_ext module_int_list COMMA module_int
 module_int_list module_int_list_base module_int
 
 expr paren_expr LPAREN expr RPAREN
@@ -95,8 +105,13 @@ bool true_expr TRUE
 bool false_expr FALSE
 expr bool_expr bool
 
+expr neg_expr MINUS expr
+
 4 expr plus_expr expr PLUS expr
 4 expr minus_expr expr MINUS expr
+
+#4 expr plus_expr PLUS expr expr
+#4 expr minus_expr MINUS expr expr
 
 3 expr times_expr expr TIMES expr
 3 expr divide_expr expr DIVIDE expr
@@ -105,6 +120,10 @@ expr bool_expr bool
 6 expr gt_expr expr GT expr
 6 expr lt_expr expr LT expr
 
+expr ternary_expr expr QUESTION expr COLON expr
+
+# Should not show up in expr step up
+bad bad expr PLUS
 
 
 
