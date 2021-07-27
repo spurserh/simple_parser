@@ -24,8 +24,9 @@ using namespace std;
 using std::shared_ptr;
 using std::unique_ptr;
 
-#define DEBUG 0
-#define PROFILING 1
+#define DEBUG 1
+#define PROFILING 0
+#define SHOW_STEP_DOWNS 1
 //#define PROFILING 1
 //#define DO_STEP_UP
 
@@ -94,6 +95,11 @@ extern "C" TokenType GetTokenTypeId(const char*type) {
 	}
 }
 
+const char* GetRuleName(RuleName name) {
+	assert(name != 0);
+	assert(name <= sRules.size());
+	return sRules[name-1].name.c_str();
+}
 
 RuleName GetRuleNameInefficiently(const string&text_name) {
 	for(RuleName name=1;name<=sRules.size();++name) {
@@ -242,12 +248,13 @@ string Indent(unsigned level) {
 }
 
 
-struct StepDownContext {
+struct StepContext {
+	// The token type that is consumable by the "stepped down" branch
 	TokenType lexed;
 	// Generic name, like expr, not number_expr
 	Token needed_rule;
 
-	bool operator<(StepDownContext const&o)const {
+	bool operator<(StepContext const&o)const {
 		if(lexed == o.lexed) {
 			return needed_rule < o.needed_rule;
 		}
@@ -256,8 +263,10 @@ struct StepDownContext {
 };
 
 typedef std::vector<RuleName> StepDownStack;
-typedef std::multimap<StepDownContext, StepDownStack> StepDownMap;
+typedef std::multimap<StepContext, StepDownStack> StepDownMap;
 StepDownMap sStepDownMap;
+
+
 
 bool StackContainsToken(StepDownStack const&stack, Token token) {
 	for(RuleName ruleId : stack) {
@@ -282,7 +291,7 @@ void CreateStepDowns(RuleName ruleId, const Token needed_rule, StepDownStack sta
 	const Token first_token = rule.pattern[0];
 
   	if(TokenIsLexical(first_token)) {
-  		StepDownContext ctx;
+  		StepContext ctx;
   		ctx.lexed = GetTokenInstType(first_token);
   		ctx.needed_rule = needed_rule;
   		sStepDownMap.insert(StepDownMap::value_type(ctx, stack));
@@ -312,6 +321,8 @@ void CreateStepDowns() {
 		CreateStepDowns(rule_name, rule.token_name, stack);
 	}
 }
+
+
 
 enum NodeId {
 	NodeId_Null = 0,
@@ -371,15 +382,16 @@ static const unsigned sNodeIdInlineCount = 32;
 
 struct Candidate {
 	unsigned					next_node_id;
-	NodeId						last_completed_id;
 	immer::map<NodeId, Node>	nodes_by_id;
+
+	// The AST may not be balanced, so traversing it can be linear time
+	NodeId						work_id;
 
 	typedef absl::InlinedVector<Candidate, sCandidateInlineCount> CandidateVector;
 	typedef absl::InlinedVector<NodeId, sNodeIdInlineCount> NodeIdVector;
 
 	Candidate()
-	 : next_node_id(NodeId_Top),
-	   last_completed_id(NodeId_Null) {
+	 : next_node_id(NodeId_Top), work_id(NodeId_Top) {
 
 	}
 
@@ -412,6 +424,7 @@ struct Candidate {
 
  	Token next_token_in_pattern(NodeId nid)const {
 		if(is_complete(nid)) {
+			assert(false);
 			return 0;
 		}
 
@@ -429,10 +442,14 @@ struct Candidate {
 		assert(node_ptr);
 		Node const&node = *node_ptr;
 		assert(node.rule);
-		return sRules[node.rule->name-1].name;
+		return GetRuleName(node.rule->name);
  	}
 
  	void get_parent_stack(NodeId nid, NodeIdVector &output)const {
+ 		if(nid == NodeId_Null) {
+ 			return;
+ 		}
+
  		while(true) {
 			Node const*node_ptr = nodes_by_id.find(nid);
 			assert(node_ptr);
@@ -445,14 +462,102 @@ struct Candidate {
  		}
  	}
 
-	void consume(Token tok,
-				 CandidateVector& successors) {
-		consume(NodeId_Top, tok, successors);
+ 	Node const&get_node(NodeId nid)const {
+		Node const*node_ptr = nodes_by_id.find(nid);
+		assert(node_ptr);
+		Node const&node = *node_ptr;
+		return node;
+ 	}
+
+
+	void branch(Token tok,
+				CandidateVector& successors) {
+
+		assert(work_id != NodeId_Null);
+		Node const&node = get_node(work_id);
+
+		// Step down
+		if(!is_complete(work_id)) {
+			const Token next_token = node.next_token_in_pattern();
+
+			fprintf(stderr, ">>> branch on [%i] rule %s next %s\n",
+					(int)work_id,
+					GetRuleName(node.rule->name),
+					TokenToString(next_token).c_str());
+
+			if(IsRuleTokenName(next_token)) {
+				StepContext step_down_ctx;
+
+				step_down_ctx.lexed = GetTokenInstType(tok);
+				step_down_ctx.needed_rule = next_token;
+
+		#if DEBUG
+				fprintf(stderr, "Step down on %s rule %s\n", 
+					GetTokenTypeName(step_down_ctx.lexed),
+					TokenToString(next_token).c_str());
+		#endif
+
+
+				auto found_step_downs_lower = sStepDownMap.lower_bound(step_down_ctx);
+				auto found_step_downs_upper = sStepDownMap.upper_bound(step_down_ctx);
+
+				fprintf(stderr, "---- Step down\n");
+				for(auto step_down_it = found_step_downs_lower;
+					step_down_it != found_step_downs_upper;
+					++step_down_it) {
+					const StepDownStack& stack = step_down_it->second;
+					
+					fprintf(stderr, " -- stack %i\n", (int)stack.size());
+
+					// Create stack of parents, that's one candidate
+					Candidate new_cand(*this);
+					NodeId last_nid = work_id;
+					for(const RuleName step_down_rule_id : stack) {
+						auto found_rule = sRulesByRuleName.find(step_down_rule_id);
+						assert(found_rule != sRulesByRuleName.end());
+						Rule const&rule = found_rule->second;
+
+						Node sub_node(rule, last_nid);
+						const NodeId sub_nid = new_cand.add_node(sub_node);
+
+				  		new_cand.nodes_by_id = new_cand.nodes_by_id.update(last_nid, [&](Node node) {
+				  			node.parsed_tokens.push_back(sub_nid);
+				  			return node;
+				  		});
+
+				  		last_nid = sub_nid;
+					}
+//					new_cand.work_id = new_cand.get_incomplete_ancestor_or_top(last_nid);
+					new_cand.work_id = last_nid;
+
+			  		successors.push_back(new_cand);
+				}
+			}
+		}
+
+ 	}
+
+ 	NodeId get_incomplete_ancestor_or_top(NodeId nid)const {
+		while(is_complete(nid)) {
+			/*
+			fprintf(stderr, "--- parent %i at %s\n", 
+					(int)get_node(nid).parent,
+					ToString(nid).c_str());
+					*/
+			nid = get_node(nid).parent;
+			if(nid == NodeId_Top) {
+				break;
+			}
+		}
+		return nid;
+ 	}
+
+	bool consume(Token tok) {
+		return consume(NodeId_Top, tok);
 	}
 
-	void consume(NodeId nid,
-				 Token tok,
-				 CandidateVector& successors) {
+	bool consume(NodeId nid,
+				 Token tok) {
 		
 		if(!is_complete(nid)) {
 			// Check if already working on an incomplete sub-node
@@ -466,9 +571,7 @@ struct Candidate {
 			 		Node::ParsedToken const&last = node.parsed_tokens.back();
 
 			 		if(last.sub && !is_complete(last.sub)) {
-			 			//fprintf(stderr, "-- Ask sub to consume\n");
-			 			consume(last.sub, tok, successors);
-			 			return;
+			 			return consume(last.sub, tok);
 			 		}
 			 	}
 			 }
@@ -477,153 +580,21 @@ struct Candidate {
 
 			const Token next_token_this_node = next_token_in_pattern(nid);
 
-		  	// Can trivially consume?
 		  	if(GetTokenInstType(next_token_this_node) == tok_type) {
-		  		/*
-		  		fprintf(stderr, "Trivially consume %s by: %s\n", 
-		  			GetTokenTypeName(tok_type),
-		  			ToString().c_str());
-		  			*/
 
 		  		nodes_by_id = nodes_by_id.update(nid, [&](Node node) {
 		  			node.parsed_tokens.push_back(tok);
 		  			return node;
 		  		});
-		  		if(is_complete(nid)) {
-		  			last_completed_id = nid;
-		  		}
-		  		successors.push_back(*this);
-		  		return;
+		  		
+	  			work_id = get_incomplete_ancestor_or_top(nid);
+
+		  		return true;
 		  	}
 
-			if(IsRuleTokenName(next_token_this_node)) {
-				StepDownContext step_down_ctx;
-
-				step_down_ctx.lexed = GetTokenInstType(tok);
-				step_down_ctx.needed_rule = next_token_this_node;
-
-#if DEBUG
-				fprintf(stderr, "Step down on %s rule %s\n", 
-					GetTokenTypeName(step_down_ctx.lexed),
-					TokenToString(next_token_this_node).c_str());
-#endif
-
-
-				auto found_step_downs_lower = sStepDownMap.lower_bound(step_down_ctx);
-				auto found_step_downs_upper = sStepDownMap.upper_bound(step_down_ctx);
-
-				for(auto step_down_it = found_step_downs_lower;
-					step_down_it != found_step_downs_upper;
-					++step_down_it) {
-					const StepDownStack& stack = step_down_it->second;
-					
-					// Create stack of parents, that's one candidate
-					Candidate new_cand(*this);
-					NodeId last_nid = nid;
-					for(RuleName const&step_down_rule_id : stack) {
-						auto found_rule = sRulesByRuleName.find(step_down_rule_id);
-						assert(found_rule != sRulesByRuleName.end());
-						Rule const&rule = found_rule->second;
-
-						Node sub_node(rule, nid);
-						const NodeId sub_nid = new_cand.add_node(sub_node);
-
-				  		new_cand.nodes_by_id = new_cand.nodes_by_id.update(last_nid, [&](Node node) {
-				  			node.parsed_tokens.push_back(sub_nid);
-				  			return node;
-				  		});
-
-				  		last_nid = sub_nid;
-					}
-			  		new_cand.consume(last_nid, tok, successors);
-				}
-
-				return;
-			}
 		}
 
-		// Applies even to completed
-		if(last_completed_id != NodeId_Null) {
-		  	// Create parent to wrap
-		  	// TODO: Walk stack of last completed Nodes
-		  	NodeIdVector parent_stack;
-		  	get_parent_stack(last_completed_id, parent_stack);
-
-#if DEBUG
-		  	fprintf(stderr, "Stack:\n");
-#endif
-
-		  	// TODO: Order/priority?
-		  	for(NodeId snid : parent_stack) {
-
-		  		if(!is_complete(snid)) {
-		  			continue;
-		  		}
-
-				Node const*node_ptr = nodes_by_id.find(snid);
-				assert(node_ptr);
-				Node const&node = *node_ptr;
-
-				if(!node.parent) {
-					continue;
-				}
-
-				Node const*parent_ptr = nodes_by_id.find(node.parent);
-				assert(parent_ptr);
-				Node const&parent = *parent_ptr;
-				assert(parent.parsed_tokens.size());
-				assert(parent.parsed_tokens.back().sub);
-				assert(parent.rule);
-
-				Token token_for_sub = parent.rule->pattern[parent.parsed_tokens.size()-1];
-				vector<Rule> const& rules = GetRulesForTokenName(token_for_sub);
-
-#if DEBUG
-		  		fprintf(stderr, "  %s tok %s rules %i\n", 
-		  			rule_name_from_nid(snid).c_str(),
-		  			TokenToString(token_for_sub).c_str(),
-		  			(int)rules.size());
-#endif
-
-		  		// TODO: Faster lookup
-				for(const Rule& rule : rules) {
-					Token first_token = rule.pattern[0];
-
-					if(GetTokenInstType(first_token) != GetTokenInstType(token_for_sub)) {
-						continue;
-					}
-
-	#if DEBUG
-					fprintf(stderr, "Step up to %s?\n", 
-						sRules[rule.name-1].name.c_str());
-	#endif
-					Candidate new_cand(*this);
-					// Create new node
-					Node new_node(rule, node.parent);
-					new_node.parsed_tokens.push_back(snid);
-					const NodeId new_nid = new_cand.add_node(new_node);
-
-					// Set sub-pointer in parent
-			  		new_cand.nodes_by_id = new_cand.nodes_by_id.update(node.parent, [&](Node parent_mut) {
-			  			parent_mut.parsed_tokens.back() = Node::ParsedToken(new_nid);
-			  			return parent_mut;
-			  		});
-
-					// Update parent pointer in child
-			  		new_cand.nodes_by_id = new_cand.nodes_by_id.update(snid, [&](Node child_mut) {
-			  			child_mut.parent = new_nid;
-			  			return child_mut;
-			  		});
-
-			  		new_cand.last_completed_id = NodeId_Null;
-
-			  		new_cand.consume(new_nid, tok, successors);
-
-				}
-
-		  	}
-		}
-
+		return false;
 	}
 
 	string ToString(NodeId nid)const {
@@ -631,16 +602,33 @@ struct Candidate {
 		assert(node_ptr);
 		Node const&node = *node_ptr;
 
+		const bool nid_complete = is_complete(nid);
+
 		ostringstream ostr;
-		ostr << sRules[node.rule->name-1].name;
+		ostr << GetRuleName(node.rule->name);
 		ostr << " { ";
 		for(unsigned i=0;i<node.pattern_length();++i) {
-			if(i == node.next_unprocessed_index()) {
-				ostr << "^";
+			bool complete_here = false;
+
+			if(i < node.next_unprocessed_index()) {
+				if(node.parsed_tokens[i].sub) {
+					complete_here = is_complete(node.parsed_tokens[i].sub);
+				} else {
+					complete_here = true;
+				}
 			}
+
 			if(i >= node.next_unprocessed_index()) {
+				if((!nid_complete) && (!complete_here) && (i == node.parsed_tokens.size())) {
+					ostr << "^";
+				}
+
 				ostr << TokenToString(node.rule->pattern[i]);
 			} else {
+				if((!nid_complete) && (!complete_here) && (i == (node.parsed_tokens.size()-1))) {
+					ostr << "^";
+				}
+
 				if(node.parsed_tokens[i].lexed) {
 					ostr << TokenToString(node.parsed_tokens[i].lexed);
 				} else {
@@ -648,17 +636,18 @@ struct Candidate {
 					ostr << ToString(node.parsed_tokens[i].sub);
 				}
 			}
+			if((!nid_complete) && complete_here && (i == (node.parsed_tokens.size()-1))) {
+				ostr << "^";
+			}
 			ostr << " ";
 		}
 		ostr << "} ";
-		if(node.next_unprocessed_index() == node.pattern_length()) {
-			ostr << "^";
-		}
-
-
-		if(is_complete(nid)) {
+		
+		if((nid == NodeId_Top) && nid_complete) {
 			ostr << " (c)";
 		}
+
+
 		return ostr.str();
  	}
 
@@ -669,7 +658,7 @@ struct Candidate {
 		Node const&node = *node_ptr;
 
 		ostringstream ostr;
-		ostr << sRules[node.rule->name-1].name;
+		ostr << GetRuleName(node.rule->name);
 
 		if(is_complete(nid)) {
 			ostr << " (c)";
@@ -730,7 +719,22 @@ void ConsumeToken(Token tok, CandidateVector &candidates) {
 	CandidateVector prev_candidates = candidates;
 	candidates.clear();
 	for(Candidate &cand : prev_candidates) {
-		cand.consume(tok, candidates);
+		if(cand.consume(tok)) {
+			candidates.push_back(cand);
+		} else {
+			CandidateVector branched;
+			cand.branch(tok, branched);
+			fprintf(stderr, "Branched to:\n");
+			PrintCandidates(branched);
+			
+			for(Candidate &branched_cand : branched) {
+				if(branched_cand.consume(tok)) {
+					candidates.push_back(branched_cand);
+				} else {
+					assert(!"Successors should always be able to consume the next token");
+				}
+			}
+		}
 	}
 }
 
@@ -758,21 +762,24 @@ int main(int argc, const char **argv) {
 
 	fprintf(stderr, "Time to generate step-downs %fms\n", 1000.0*(end_create_step_downs_time - start_create_step_downs_time));
 	fprintf(stderr, "Step downs count: %i\n", (int)sStepDownMap.size());
-#if DEBUG
+#if SHOW_STEP_DOWNS
 	for(auto const&step_down_val : sStepDownMap) {
-		const StepDownContext& ctx = step_down_val.first;
+		const StepContext& ctx = step_down_val.first;
 		const StepDownStack& stack = step_down_val.second;
 
 		fprintf(stderr, "  (tok %s, rule %s): ",
 			GetTokenTypeName(ctx.lexed), TokenToString(ctx.needed_rule).c_str());
 		for(RuleName ruleId : stack) {
-			fprintf(stderr, "%s ", sRules[ruleId-1].name.c_str());
+			fprintf(stderr, "%s ", GetRuleName(ruleId));
 		}
-		fprintf(stderr, "\n-- ");
+		fprintf(stderr, "\n");
+		/*
+		fprintf(stderr, "-- ");
 		for(RuleName ruleId : stack) {
 			fprintf(stderr, "%s ", TokenToString(sRulesByRuleName.find(ruleId)->second.token_name).c_str());
 		}
 		fprintf(stderr, "\n");
+		*/
 	}
 #endif
 
@@ -834,6 +841,7 @@ int main(int argc, const char **argv) {
 
 #if DEBUG
 		PrintCandidates(candidates);
+		CandidateVector dbg_candidates = candidates;
 #endif
 
 		ConsumeToken(tok, candidates);
@@ -841,6 +849,11 @@ int main(int argc, const char **argv) {
 		if(candidates.size() == 0) {
 			// TODO: Report line number in preprocessed file
 			fprintf(stderr, "ERROR at line %i, token %s\n", yylineno, tok_type_name.c_str());
+
+#if DEBUG
+			fprintf(stderr, "\nFinal candidates (%i):\n", (int)dbg_candidates.size());
+			PrintCandidates(dbg_candidates, true);
+#endif
 			exit(1);
 		}
 
