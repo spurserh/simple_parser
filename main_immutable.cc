@@ -25,7 +25,7 @@ using std::shared_ptr;
 using std::unique_ptr;
 
 #define DEBUG 0
-#define PROFILING 1
+#define PROFILING 0
 #define SHOW_STEP_DOWNS 0
 #define SHOW_STEP_UPS 0
 
@@ -923,6 +923,8 @@ void SanityCheckCandidates(CandidateVector &candidates) {
 }
 #endif
 
+// ---- grammar specific ----
+
 bool NodeHasOperatorPriority(Node const&node) {
 	if("expr*" != TokenToString(node.rule->token_name)) {
 		return false;
@@ -952,10 +954,13 @@ bool ViolatesOperatorRules(Candidate const&cand) {
 		if(!NodeHasOperatorPriority(sub_node)) {
 			continue;
 		}
+
+		// Some operators have higher priority regardless of lexical position
 		if(node.rule->priority < sub_node.rule->priority) {
 			return true;
 		}
 		
+		// Last encloses (first has highest priority, ie left to right, top to bottom)
 		if((node.rule->priority == sub_node.rule->priority) && 
 			(cand.get_first_lexical_token_index(cand.top_completed) <
 				cand.get_first_lexical_token_index(parsed.sub))) {
@@ -964,6 +969,9 @@ bool ViolatesOperatorRules(Candidate const&cand) {
 	}
 	return false;
 }
+
+// ---- / grammar specific ----
+
 
 extern "C" {
 extern int yylex (void);
