@@ -25,8 +25,8 @@ using std::shared_ptr;
 using std::unique_ptr;
 
 #define DEBUG 0
-#define PROFILING 0
-#define SHOW_STEP_DOWNS 1
+#define PROFILING 1
+#define SHOW_STEP_DOWNS 0
 #define SHOW_STEP_UPS 0
 
 
@@ -421,7 +421,9 @@ struct Node {
 		  : lexed(o.lexed), sub(o.sub) {
 		}
 
-		ParsedToken(Token lexed) : lexed(lexed), sub(NodeId_Null) {
+		ParsedToken(Token lexed, unsigned token_index, int lineno) 
+			: lexed(lexed), sub(NodeId_Null),
+			  token_index(token_index), lineno(lineno) {
 		}
 
 		ParsedToken(NodeId sub) : lexed(0), sub(sub) {
@@ -429,6 +431,10 @@ struct Node {
 
 		Token lexed;
 		NodeId sub;
+
+		// Extra metadata if lexed is valid
+		unsigned token_index;
+		int lineno;
 	};
 
 	// Pointer instead of reference for move semantics
@@ -471,6 +477,9 @@ struct Candidate {
 
 	// The AST may not be balanced, so traversing it can be linear time
 	NodeId						work_id;
+
+	// Passed out for userspace actions
+	NodeId 						top_completed;
 
 	typedef absl::InlinedVector<Candidate, sCandidateInlineCount> CandidateVector;
 	typedef absl::InlinedVector<NodeId, sNodeIdInlineCount> NodeIdVector;
@@ -694,7 +703,8 @@ struct Candidate {
 		return nid;
  	}
 
-	bool consume(Token tok) {
+	bool consume(Token tok, unsigned token_index, int lineno) {
+		top_completed = NodeId_Null;
 
 		// Find first incomplete
 		for(NodeId nid = work_id;nid != NodeId_Null;nid = get_node(nid).parent) {
@@ -707,11 +717,26 @@ struct Candidate {
 					//fprintf(stderr, "consume at %s\n", ToString(nid).c_str());
 
 			  		nodes_by_id = nodes_by_id.update(nid, [&](Node node) {
-			  			node.parsed_tokens.push_back(tok);
+			  			node.parsed_tokens.push_back(
+			  				Node::ParsedToken(tok, token_index, lineno));
 			  			return node;
 			  		});
-			  		
+
 		  			work_id = nid;
+
+		  			// Keep track of completed nodes for user actions
+		  			{
+			  			NodeId scan_up = nid;
+			  			top_completed = NodeId_Null;
+			  			while(is_complete(scan_up)) {
+			  				top_completed = scan_up;
+			  				scan_up = get_node(scan_up).parent;
+			  				if(scan_up == NodeId_Null) {
+			  					break;
+			  				} 
+			  			}
+			  		}
+
 			  		return true;
 			  	}
 			  	break;
@@ -719,6 +744,17 @@ struct Candidate {
 		}
 
 		return false;
+	}
+
+	unsigned get_first_lexical_token_index(NodeId nid)const {
+		Node const&node = get_node(nid);
+		assert(node.parsed_tokens.size() > 0);
+		if(node.parsed_tokens[0].sub != 0) {
+			return get_first_lexical_token_index(node.parsed_tokens[0].sub);
+		}
+
+		assert(TokenIsLexical(node.parsed_tokens[0].lexed));
+		return node.parsed_tokens[0].lexed;
 	}
 
 	string ToString(NodeId nid)const {
@@ -839,7 +875,8 @@ void PrintCandidates(CandidateVector const&candidates, bool pretty = false) {
 	}
 }
 
-void ConsumeToken(Token tok, CandidateVector &candidates) {
+void ConsumeToken(Token tok, unsigned token_index, int lineno, 
+				  CandidateVector &candidates) {
 	CandidateVector prev_candidates = candidates;
 	candidates.clear();
 
@@ -847,7 +884,7 @@ void ConsumeToken(Token tok, CandidateVector &candidates) {
 	CandidateVector branched_up;
 
 	for(Candidate &cand : prev_candidates) {
-		if(cand.consume(tok)) {
+		if(cand.consume(tok, token_index, lineno)) {
 			candidates.push_back(cand);
 		} else {
 			cand.step_down(tok, branched_down);
@@ -862,14 +899,14 @@ void ConsumeToken(Token tok, CandidateVector &candidates) {
 	PrintCandidates(branched_up);
 #endif
 	for(Candidate &branched_cand : branched_down) {
-		if(branched_cand.consume(tok)) {
+		if(branched_cand.consume(tok, token_index, lineno)) {
 			candidates.push_back(branched_cand);
 		} else {
 			assert(!"Successors should always be able to consume the next token");
 		}
 	}
 	for(Candidate &branched_cand : branched_up) {
-		if(branched_cand.consume(tok)) {
+		if(branched_cand.consume(tok, token_index, lineno)) {
 			candidates.push_back(branched_cand);
 		} else {
 			assert(!"Successors should always be able to consume the next token");
@@ -885,6 +922,48 @@ void SanityCheckCandidates(CandidateVector &candidates) {
 	}	
 }
 #endif
+
+bool NodeHasOperatorPriority(Node const&node) {
+	if("expr*" != TokenToString(node.rule->token_name)) {
+		return false;
+	}
+
+	if(node.rule->priority == 0) {
+		return false;
+	}
+
+	return true;
+}
+
+bool ViolatesOperatorRules(Candidate const&cand) {
+	Node const&node = cand.get_node(cand.top_completed);
+
+	if(!NodeHasOperatorPriority(node)) {
+		return false;
+	}
+
+	assert(node.parsed_tokens.size() == node.rule->pattern.size());
+
+	for(Node::ParsedToken const&parsed : node.parsed_tokens) {
+		if(parsed.sub == NodeId_Null) {
+			continue;
+		}
+		Node const&sub_node = cand.get_node(parsed.sub);
+		if(!NodeHasOperatorPriority(sub_node)) {
+			continue;
+		}
+		if(node.rule->priority < sub_node.rule->priority) {
+			return true;
+		}
+		
+		if((node.rule->priority == sub_node.rule->priority) && 
+			(cand.get_first_lexical_token_index(cand.top_completed) <
+				cand.get_first_lexical_token_index(parsed.sub))) {
+			return true;
+		}
+	}
+	return false;
+}
 
 extern "C" {
 extern int yylex (void);
@@ -1014,7 +1093,7 @@ int main(int argc, const char **argv) {
 
 	sStartTime = doubletime();
 
-	while(true) {
+	for(unsigned token_index=0;;++token_index) {
 		Token tok = yylex();
 		if(tok == 0) {
 			break;
@@ -1033,7 +1112,7 @@ int main(int argc, const char **argv) {
 		CandidateVector dbg_candidates = candidates;
 #endif
 
-		ConsumeToken(tok, candidates);
+		ConsumeToken(tok, token_index, yylineno, candidates);
 
 		if(candidates.size() == 0) {
 			// TODO: Report line number in preprocessed file
@@ -1046,9 +1125,13 @@ int main(int argc, const char **argv) {
 			exit(1);
 		}
 
-#if 0
-		SanityCheckCandidates(candidates);
-#endif
+		absl::InlinedVector unfiltered = candidates;
+		candidates.clear();
+		for(Candidate const&cand : unfiltered) {
+			if((cand.top_completed == NodeId_Null) || (!ViolatesOperatorRules(cand))) {
+				candidates.push_back(cand);
+			}
+		}
 	}
 
 	on_exit();
