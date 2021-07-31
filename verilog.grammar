@@ -4,6 +4,7 @@
 
 alpha [a-zA-Z_]
 digit [0-9]
+digithex [0-9a-zA-Z]
 
 %%
 [ \t]		;
@@ -13,6 +14,8 @@ digit [0-9]
 "false"	return LexGetTokenInstName("FALSE", "");
 "module"	return LexGetTokenInstName("MODULE", "");
 "endmodule"	return LexGetTokenInstName("ENDMODULE", "");
+"parameter"	return LexGetTokenInstName("PARAMETER", "");
+"integer"	return LexGetTokenInstName("INTEGER", "");
 "wire"	return LexGetTokenInstName("WIRE", "");
 "input"	return LexGetTokenInstName("INPUT", "");
 "output"	return LexGetTokenInstName("OUTPUT", "");
@@ -25,14 +28,30 @@ digit [0-9]
 "negedge"	return LexGetTokenInstName("NEGEDGE", "");
 "if"	return LexGetTokenInstName("IF", "");
 "else"	return LexGetTokenInstName("ELSE", "");
-"@"	return LexGetTokenInstName("AT", "");
+"case"     return LexGetTokenInstName("CASE", "");
+"endcase"     return LexGetTokenInstName("ENDCASE", "");
+"default"     return LexGetTokenInstName("DEFAULT", "");
 {digit}+       return LexGetTokenInstName("NUM", yytext);
+{digit}+"'b"{digit}+       return LexGetTokenInstName("NUM", yytext);
+{digit}+"'d"{digit}+       return LexGetTokenInstName("NUM", yytext);
+{digit}+"'d"{digit}+       return LexGetTokenInstName("NUM", yytext);
+{digit}+"'h"{digithex}+       return LexGetTokenInstName("NUM", yytext);
+{digit}+"'sb"{digit}+       return LexGetTokenInstName("NUM", yytext);
+{digit}+"'sd"{digit}+       return LexGetTokenInstName("NUM", yytext);
+{digit}+"'sd"{digit}+       return LexGetTokenInstName("NUM", yytext);
+{digit}+"'sh"{digithex}+       return LexGetTokenInstName("NUM", yytext);
 {alpha}({alpha}|{digit})* return LexGetTokenInstName("ID", yytext);
 "+"     return LexGetTokenInstName("PLUS", "");
 "-"     return LexGetTokenInstName("MINUS", "");
 "*"     return LexGetTokenInstName("TIMES", "");
 "/"     return LexGetTokenInstName("DIVIDE", "");
+"@"	return LexGetTokenInstName("AT", "");
+"#"	return LexGetTokenInstName("HASH", "");
 "%"     return LexGetTokenInstName("MOD", "");
+"&"     return LexGetTokenInstName("AND", "");
+"|"     return LexGetTokenInstName("OR", "");
+"^"     return LexGetTokenInstName("XOR", "");
+"~"     return LexGetTokenInstName("BITNOT", "");
 "="     return LexGetTokenInstName("EQUALS", "");
 ":"     return LexGetTokenInstName("COLON", "");
 ";"     return LexGetTokenInstName("SEMI", "");
@@ -45,6 +64,7 @@ digit [0-9]
 "["     return LexGetTokenInstName("LBRACKET", "");
 "]"     return LexGetTokenInstName("RBRACKET", "");
 ","     return LexGetTokenInstName("COMMA", "");
+"."     return LexGetTokenInstName("DOT", "");
 "?"		return LexGetTokenInstName("QUESTION", "");
 %%
 
@@ -71,31 +91,77 @@ module_def module_def MODULE ID LPAREN module_int_list RPAREN SEMI module_body E
 reg_decl reg_decl_single REG ID
 reg_decl reg_decl_range REG bit_range ID
 
+wire_decl wire_decl_single WIRE ID
+wire_decl wire_decl_range WIRE bit_range ID
+
+param_decl param_decl ID EQUALS expr
+param_decl param_decl_int INTEGER ID EQUALS expr
+
+param_decl_list param_decl_list_single param_decl
+param_decl_list param_decl_list_ext param_decl_list COMMA param_decl 
+
+always_source always_src_pos POSEDGE ID
+always_source always_src_combo TIMES
+
+begin_rule begin_rule_simple BEGIN
+begin_rule begin_rule_labeled BEGIN COLON ID
+
+module_body_stmt parameter PARAMETER param_decl_list SEMI
+module_body_stmt int_spec in_or_out ID SEMI
+module_body_stmt int_spec_range in_or_out bit_range ID SEMI
 module_body_stmt reg_decl_noinit reg_decl SEMI
 module_body_stmt reg_decl_init reg_decl EQUALS expr SEMI
-module_body_stmt continuous_assign ASSIGN ID EQUALS ID SEMI
-module_body_stmt always_block ALWAYS AT LPAREN POSEDGE ID RPAREN BEGIN always_stmt_body END
+module_body_stmt wire_decl_noinit wire_decl SEMI
+module_body_stmt wire_decl_init wire_decl EQUALS expr SEMI
+module_body_stmt continuous_assign ASSIGN ID EQUALS expr SEMI
+module_body_stmt always_block ALWAYS AT LPAREN always_source RPAREN begin_rule always_stmt_body END
+module_body_stmt module_inst ID ID LPAREN inst_int_list RPAREN SEMI
+module_body_stmt module_inst_paramd ID HASH LPAREN inst_int_list RPAREN ID LPAREN inst_int_list RPAREN SEMI
+
+case_stmt case_single ID COLON always_stmt_body_stmt
+case_stmt case_ext ID COLON begin_rule always_stmt_body END
+case_stmt default DEFAULT COLON always_stmt_body_stmt END
+case_stmt default_ext DEFAULT COLON begin_rule always_stmt_body END
+
+case_list case_list_single case_stmt
+case_list case_list_ext case_list case_stmt
 
 module_body module_body_base module_body_stmt
 module_body module_body_ext module_body module_body_stmt
 
 always_stmt_body_stmt blocking_assign ID EQUALS expr SEMI
 always_stmt_body_stmt nonblocking_assign ID LT EQUALS expr SEMI
-always_stmt_body_stmt if_else IF LPAREN expr RPAREN BEGIN always_stmt_body END ELSE BEGIN always_stmt_body END
+always_stmt_body_stmt if IF LPAREN expr RPAREN begin_rule always_stmt_body END 
+always_stmt_body_stmt if_else IF LPAREN expr RPAREN begin_rule always_stmt_body END else_stmt_list
+always_stmt_body_stmt case CASE LPAREN expr RPAREN case_list ENDCASE
+
+else_stmt else_stmt ELSE begin_rule always_stmt_body END
+else_stmt else_stmt_cond ELSE IF LPAREN expr RPAREN begin_rule always_stmt_body END
+
+else_stmt_list else_stmt_single else_stmt
+else_stmt_list else_stmt_ext else_stmt_list else_stmt
 
 always_stmt_body always_stmt_body_base always_stmt_body_stmt
 always_stmt_body always_stmt_body_ext always_stmt_body always_stmt_body_stmt
 
 
-bit_range bit_range LBRACKET NUM COLON NUM RBRACKET
+bit_range bit_range LBRACKET expr COLON expr RBRACKET
 
 in_or_out in_or_out_in INPUT
 in_or_out in_or_out_out OUTPUT
 
 module_int module_int_single in_or_out bit_range ID
 module_int module_int_range in_or_out ID
+module_int module_int_partial ID
+
 module_int_list module_int_list_ext module_int_list COMMA module_int
 module_int_list module_int_list_base module_int
+
+inst_int inst_int DOT ID LPAREN expr RPAREN
+
+inst_int_list inst_int_list_ext inst_int_list COMMA inst_int
+inst_int_list inst_int_list_base inst_int
+
 
 expr paren_expr LPAREN expr RPAREN
 
@@ -105,13 +171,20 @@ bool true_expr TRUE
 bool false_expr FALSE
 expr bool_expr bool
 
-expr neg_expr MINUS expr
+# https://class.ece.uw.edu/cadta/verilog/operators.html
+# TODO: Check priorities
+
+2 expr unary_minus MINUS expr
+2 expr bitwise_not BITNOT expr
+
+1 expr slice_expr expr LBRACKET expr COLON expr RBRACKET
+1 expr array_expr expr LBRACKET expr RBRACKET 
+
+4 expr bit_or_expr expr OR expr
+4 expr bit_and_expr expr AND expr
 
 4 expr plus_expr expr PLUS expr
 4 expr minus_expr expr MINUS expr
-
-#4 expr plus_expr PLUS expr expr
-#4 expr minus_expr MINUS expr expr
 
 3 expr times_expr expr TIMES expr
 3 expr divide_expr expr DIVIDE expr
@@ -121,9 +194,6 @@ expr neg_expr MINUS expr
 6 expr lt_expr expr LT expr
 
 expr ternary_expr expr QUESTION expr COLON expr
-
-# Should not show up in expr step up
-bad bad expr PLUS
 
 
 

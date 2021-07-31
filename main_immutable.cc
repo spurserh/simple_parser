@@ -25,7 +25,7 @@ using std::shared_ptr;
 using std::unique_ptr;
 
 #define DEBUG 0
-#define PROFILING 0
+#define PROFILING 1
 #define SHOW_STEP_DOWNS 0
 #define SHOW_STEP_UPS 0
 
@@ -198,7 +198,10 @@ map<Token, vector<Rule> > BuildRulesByTokenName() {
 	set<string> used_rule_names;
 	for(RuleName rule_name=1;rule_name<=sRules.size();++rule_name) {
 		const RawRule &raw_rule = sRules[rule_name-1];
-		assert(used_rule_names.find(raw_rule.name) == used_rule_names.end());
+		if(used_rule_names.find(raw_rule.name) != used_rule_names.end()) {
+			fprintf(stderr, "ERROR: Repeated rule name %s\n", raw_rule.name.c_str());
+			exit(1);
+		}
 		used_rule_names.insert(raw_rule.name);
 		const Token token_name = GetTokenInstName(raw_rule.token_name.c_str(), "");
 		auto found = ret.find(token_name);
@@ -417,10 +420,6 @@ enum NodeId {
 struct Node {
 
 	struct ParsedToken {
-		ParsedToken(ParsedToken const&o) 
-		  : lexed(o.lexed), sub(o.sub) {
-		}
-
 		ParsedToken(Token lexed, unsigned token_index, int lineno) 
 			: lexed(lexed), sub(NodeId_Null),
 			  token_index(token_index), lineno(lineno) {
@@ -746,17 +745,30 @@ struct Candidate {
 		return false;
 	}
 
+#if 1
 	unsigned get_first_lexical_token_index(NodeId nid)const {
 		Node const&node = get_node(nid);
+		for(unsigned i=0;i<node.parsed_tokens.size();++i) {
+			if(node.parsed_tokens[i].lexed != 0) {
+				assert(TokenIsLexical(node.parsed_tokens[i].lexed));
+				return node.parsed_tokens[i].token_index;
+			}
+		}
+		assert(!"Shouldn't get here");
+		return 0;
+	}
+
+#else
+ 	unsigned get_first_lexical_token_index(NodeId nid)const {
+ 		Node const&node = get_node(nid);
 		assert(node.parsed_tokens.size() > 0);
 		if(node.parsed_tokens[0].sub != 0) {
 			return get_first_lexical_token_index(node.parsed_tokens[0].sub);
 		}
-
 		assert(TokenIsLexical(node.parsed_tokens[0].lexed));
 		return node.parsed_tokens[0].lexed;
 	}
-
+#endif
 	string ToString(NodeId nid)const {
 		Node const*node_ptr = nodes_by_id.find(nid);
 		assert(node_ptr);
@@ -877,6 +889,7 @@ void PrintCandidates(CandidateVector const&candidates, bool pretty = false) {
 
 void ConsumeToken(Token tok, unsigned token_index, int lineno, 
 				  CandidateVector &candidates) {
+
 	CandidateVector prev_candidates = candidates;
 	candidates.clear();
 
@@ -1110,8 +1123,8 @@ int main(int argc, const char **argv) {
 		string tok_type_name = GetTokenInstTypeName(tok);
 
 #if !PROFILING
-		fprintf(stderr, "\n\n---- Next %s, candidates before %i\n",
-			TokenToString(tok).c_str(), (int)candidates.size());
+		fprintf(stderr, "\n\n---- Next %s (line %i), candidates before %i\n",
+			TokenToString(tok).c_str(), yylineno, (int)candidates.size());
 #endif
 
 #if !PROFILING

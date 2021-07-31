@@ -52,7 +52,7 @@ def main():
 
 	for line in lex_lines:
 		# LexGetTokenInstName("VOID", "")
-		match = re.search("LexGetTokenInstName\\(\\\"([A-Z_]+)\\\"", line)
+		match = re.search("LexGetTokenInstName\\(\\\"([A-Z_]+[A-Z_0-9_]*)\\\"", line)
 		if match != None:
 			lex_tokens.add(match.group(1))
 
