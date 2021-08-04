@@ -1,15 +1,21 @@
 
-void PopCount(
-	ac_int<ac::log2_ceil<N + 1>::val, false> in) {
+
+
+template<int x>
+int a(int y) {
+	return x+y;
 }
 
-/*
-int add1(int x) { return x + 1; }
-int add2(int x) { return x + 1; }
-*/
+template<int x>
+int b(int y) {
+	return x+y;
+}
 
-/*
-int foo() { return a+b*c>1;} int bar() { return 11;}
-int foo() { int i((int) adouble);}
-void foo() {A a(B(x));}
-*/
+
+
+cpp_int mysymbol() {
+	return a<10, b<10> >(5);
+//	return a<10>(5);
+}
+
+
