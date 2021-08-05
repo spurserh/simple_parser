@@ -27,7 +27,43 @@ bool CheckSetsEqual(InlinedSet<T, NInline> &test,
 	return values_from_test == values_from_ref;
 }
 
-TEST(InlinedSetTest, Simple) {
+struct InlinedSetTest : public ::testing::Test {
+
+	template<int nInline>
+	void TestRandom() {
+		const int kMaxVal = 100;
+		srand(5555);	
+		for(int ti=0;ti<200;++ti) {
+			InlinedSet<int, nInline> test;
+			absl::flat_hash_set<int> ref;
+			for(int ci=0;ci<200;++ci) {
+
+				// Stay relatively close to 0, 
+				//  since that's where the custom function is
+				if(0==(rand()%3)) {
+					const int val = rand()%kMaxVal;
+					test.insert(val);
+					ref.insert(val);
+				}
+				if(0==(rand()%2)) {
+					const int val = rand()%kMaxVal;
+					test.erase(val);
+					ref.erase(val);
+				}
+				{
+					// Check random
+					const int val = rand()%kMaxVal;
+					ASSERT_EQ(ref.contains(val), test.contains(val));
+				}
+
+				const bool sets_equal = CheckSetsEqual<int, nInline>(test, ref);
+				ASSERT_TRUE(sets_equal);
+			}
+		}
+	}
+};
+
+TEST_F(InlinedSetTest, Simple) {
 	InlinedSet<float, 4> test;
 
 	ASSERT_FALSE(test.contains(3.1f));
@@ -41,7 +77,7 @@ TEST(InlinedSetTest, Simple) {
 	ASSERT_FALSE(test.contains(3.1f));
 }
 
-TEST(InlinedSetTest, OverflowAndAlloc) {
+TEST_F(InlinedSetTest, OverflowAndAlloc) {
 	InlinedSet<float, 4> test;
 
 	ASSERT_FALSE(test.contains(3.1f));
@@ -67,7 +103,7 @@ TEST(InlinedSetTest, OverflowAndAlloc) {
 	ASSERT_FALSE(test.contains(3.5f));
 }
 
-TEST(InlinedSetTest, IterateTest) {
+TEST_F(InlinedSetTest, IterateTest) {
 	std::vector<float> values;
 	values.push_back(1.1f);
 	values.push_back(2.1f);
@@ -94,7 +130,7 @@ TEST(InlinedSetTest, IterateTest) {
 	ASSERT_EQ(values, values_from_test);
 }
 
-TEST(InlinedSetTest, IterateTestShort) {
+TEST_F(InlinedSetTest, IterateTestShort) {
 	std::vector<float> values;
 	values.push_back(1.1f);
 	values.push_back(2.1f);
@@ -118,44 +154,11 @@ TEST(InlinedSetTest, IterateTestShort) {
 	ASSERT_EQ(values, values_from_test);
 }
 
-enum Command {
-	Command_Insert=0,
-	Command_Remove,
-	Command_CheckRand,
-	Command_Count,
-};
-
-TEST(InlinedSetTest, RandomTest) {
-	static const int nInline = 4;
-	InlinedSet<int, nInline> test;
-	absl::flat_hash_set<int> ref;
-	const int kMaxVal = 1000;
-	srand(5555);	
-	for(int i=0;i<20000;++i) {
-		Command cmd = Command(rand()%int(Command_Count));
-		switch(cmd) {
-			case Command_Insert: {
-				const int val = rand()%kMaxVal;
-				test.insert(val);
-				ref.insert(val);
-				break;
-			}
-			case Command_Remove: {
-				const int val = rand()%kMaxVal;
-				test.erase(val);
-				ref.erase(val);
-				break;
-			}
-			case Command_CheckRand: {
-				const int val = rand()%kMaxVal;
-				ASSERT_EQ(ref.contains(val), test.contains(val));
-				break;
-			}
-			default: assert(!"Internal failure");
-		}
-		const bool sets_equal = CheckSetsEqual<int, nInline>(test, ref);
-		ASSERT_TRUE(sets_equal);
-	}
+TEST_F(InlinedSetTest, RandomTest) {
+	TestRandom<1>();
+	TestRandom<2>();
+	TestRandom<3>();
+	TestRandom<4>();
 }
 
 }  // namespace
