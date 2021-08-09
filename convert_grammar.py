@@ -2,6 +2,9 @@
 
 import sys
 import re
+import tempfile
+import os
+import subprocess
 
 def main():
 
@@ -44,8 +47,15 @@ def main():
 	grammar_lines = list(filter(lambda s: not s.startswith("#"), grammar_lines))
 	
 	# Output lex file
-	with open(lex_out_path, "w") as f:
-		f.write("\n".join(lex_lines))
+	tmp_fd, tmp_path = tempfile.mkstemp()
+	try:
+		with os.fdopen(tmp_fd, 'w') as tmp:
+			tmp.write("\n".join(lex_lines))
+
+		subprocess.call(["lex", "-o", lex_out_path, tmp_path])
+	finally:
+		os.remove(tmp_path)
+
 
 	# Extract lexer token names (set)
 	lex_tokens = set()
@@ -85,7 +95,7 @@ const vector<RawRule> sRules = {
 			name = columns[1]
 			pattern = columns[2:]
 			quoted_pattern = map(lambda s: "\"" + s + "\"", pattern)
-			return "RawRule(\"{tn}\", \"{n}\", {{{pat}}}, {pri})".format(tn=token_name, n=name, pat=", ".join(quoted_pattern), pri=priority)
+			return "RawRule(\"{tn}\", \"{n}\", {{{pat}}}, \"{pri}\")".format(tn=token_name, n=name, pat=", ".join(quoted_pattern), pri=priority)
 		f.write(",\n\t".join(map(FormatRuleFromLine, grammar_lines)))
 
 		f.write("""

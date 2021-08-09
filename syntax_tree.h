@@ -2,20 +2,14 @@
 #ifndef SYNTAX_TREE_H
 #define SYNTAX_TREE_H
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "inlined_set.h"
+#include "rules.h"
 
 #include <vector>
 
 namespace parser {
 
-struct Rule {
-	const Token token_name;
-	const RuleName name;
-	const unsigned priority; // 0 is no priority
-	absl::InlinedVector<Token, sInlinedRuleLen> pattern;
-};
 
 // 0 = NULL, indexes from 1
 typedef unsigned LexedTokenIdx;
@@ -33,7 +27,6 @@ struct ParsedSlot {
 struct Node {
 	// Pointer instead of reference for move semantics
 	Rule const*rule;
-
 
 	InlinedSet<Node*, 4> parents;
 

@@ -1,3 +1,6 @@
+
+
+
 cc_binary(
     name = "parse",
     srcs = ["main_immutable.cc", "lex.yy.c", "grammar.h", "parser.h"],
@@ -34,11 +37,46 @@ cc_library(
     deps = ["@com_google_absl//absl/container:flat_hash_set"]
 )
 
+
+genrule(
+    name = "test_grammar",
+    srcs = ["test.grammar"],
+    outs = ["lex.yy.c", "grammar.h"],
+    cmd = "$(location convert_grammar.py) $(location test.grammar) $(location lex.yy.c) $(location grammar.h)",
+    tools = ["convert_grammar.py"],
+)
+
+cc_library(
+    name = "rules",
+    hdrs = ["rules.h"],
+    srcs = ["rules.cc"],
+    textual_hdrs = [
+        ":test_grammar"
+    ],
+    deps = [":inlined_set",
+            "@com_google_absl//absl/container:inlined_vector"],
+)
+
+cc_test(
+    name = "rules_test",
+    srcs = [
+        "rules_test.cc",
+    ],
+    deps = [
+        ":rules",
+        "@gtest//:gtest",
+        "@gtest//:gtest_main"
+    ],
+)
+
+
 cc_library(
     name = "syntax_tree",
     hdrs = ["syntax_tree.h"],
     srcs = ["syntax_tree.cc"],
-    deps = [":inlined_set"]
+    deps = [":inlined_set",
+            ":rules",
+            "@com_google_absl//absl/container:inlined_vector"]
 )
 
 cc_test(

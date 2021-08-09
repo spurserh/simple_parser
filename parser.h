@@ -100,15 +100,6 @@ const char* GetRuleName(RuleName name) {
 	return sRules[name-1].name.c_str();
 }
 
-RuleName GetRuleNameInefficiently(const string&text_name) {
-	for(RuleName name=1;name<=sRules.size();++name) {
-		if(sRules[name-1].name == text_name)
-			return name;
-	}
-	return 0;
-}
-
-
 
 typedef pair<TokenType, string> TokenInstanceKey;
 map<TokenInstanceKey, Token> sTokenInstanceIds;

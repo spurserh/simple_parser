@@ -1,0 +1,21 @@
+/LEX/
+
+%option noyywrap
+
+
+%%
+[ \t]		;
+[ \n]   { yylineno = yylineno + 1;}
+"true"	return LexGetTokenInstName("TRUE", "");
+"false"	return LexGetTokenInstName("FALSE", "");
+","     return LexGetTokenInstName("COMMA", "");
+%%
+
+/GRAMMAR/
+
+expr expr_true TRUE
+expr expr_false FALSE
+expr expr_list expr COMMA expr
+
+top top expr
+
