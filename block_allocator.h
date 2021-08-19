@@ -5,6 +5,10 @@
 #include <list>
 #include <memory>
 
+// The BlockAllocator class is meant to minimize calls to the allocator for small objects. 
+// This class allocates increasingly large blocks like std::vector, 
+// but without invalidating previously generated pointers. 
+// It also never lets go of the memory it allocates until it is destroyed.
 template<typename T>
 struct BlockAllocator {
 	BlockAllocator(size_t initial_size, size_t alignment)
