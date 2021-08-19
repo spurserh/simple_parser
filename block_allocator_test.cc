@@ -21,6 +21,8 @@ TEST(BlockAllocatorTest, Simple) {
 		test_ptrs.push_back(vptr);
 
 		ASSERT_EQ(test_ref.size(), test_ptrs.size());
+		EXPECT_EQ(test_ref.size(), test.size());
+		
 		for(size_t vi=0;vi<test_ref.size();++vi) {
 			EXPECT_EQ(test_ref[i], *test_ptrs[i]);
 		}
