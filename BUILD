@@ -80,6 +80,7 @@ cc_library(
     srcs = ["syntax_tree.cc"],
     deps = [":inlined_set",
             ":rules",
+            ":block_allocator",
             "@com_google_absl//absl/container:inlined_vector"]
 )
 

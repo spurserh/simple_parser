@@ -4,6 +4,7 @@
 
 #include "absl/container/inlined_vector.h"
 #include "inlined_set.h"
+#include "block_allocator.h"
 #include "rules.h"
 
 #include <vector>
@@ -108,7 +109,9 @@ struct SyntaxTree {
 
   	// std::vector uses copy constructor..
 //	std::vector<Node>     	   node_array_;
-  	absl::InlinedVector<Node, 1> node_array_;
+	BlockAllocator<Node> 	   node_array_;
+
+	// TODO: Use BlockAllocator? Need to index though?
 	std::vector<LexedToken>    token_array_;
 };
 

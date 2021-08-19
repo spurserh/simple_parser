@@ -6,7 +6,11 @@ using namespace std;
 
 namespace parser {
 
-SyntaxTree::SyntaxTree() {
+static size_t sInitialNodesAlloc = 1024;
+static size_t sNodesAlign = 32;
+
+SyntaxTree::SyntaxTree()
+	: node_array_(sInitialNodesAlloc, sNodesAlign) {
 }
 
 bool SyntaxTree::Init(char const* top_rule_name) {
@@ -42,7 +46,7 @@ Node const*SyntaxTree::GetTop()const {
 	if(node_array_.size() == 0) {
 		return 0;
 	}
-	return &node_array_[0];
+	return node_array_.get_first();
 }
 
 Token SyntaxTree::NextTokenInPattern(Node const*node)const {
@@ -138,11 +142,10 @@ bool SyntaxTree::ConsumeToken(LexedToken const&next) {
 }
 
 Node* SyntaxTree::AddNode(Rule const&rule) {
-	Node n(rule);
-	node_array_.emplace_back(std::move(n));
-	Node* new_node = &node_array_.back();
+//	Node n(rule);
+//	node_array_.emplace_back(std::move(n));
 
-	return new_node;
+	return new (node_array_.allocate()) Node (rule);
 }
 
 };  // namespace parser
