@@ -37,6 +37,10 @@ cc_library(
     deps = ["@com_google_absl//absl/container:flat_hash_set"]
 )
 
+cc_library(
+    name = "block_allocator",
+    hdrs = ["block_allocator.h"]
+)
 
 genrule(
     name = "test_grammar",
@@ -99,6 +103,20 @@ cc_test(
     ],
     deps = [
         ":inlined_set",
+        "@gtest//:gtest",
+        "@gtest//:gtest_main"
+    ],
+)
+
+
+
+cc_test(
+    name = "block_allocator_test",
+    srcs = [
+        "block_allocator_test.cc",
+    ],
+    deps = [
+        ":block_allocator",
         "@gtest//:gtest",
         "@gtest//:gtest_main"
     ],

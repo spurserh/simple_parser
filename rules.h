@@ -65,6 +65,8 @@ const char*GetTokenInstContent(Token t);
 const TokenType GetTokenInstType(Token t);
 bool TokenIsLexical(Token t);
 const char*GetTokenInstTypeName(Token t);
+std::vector<Rule> const&GetRulesForTokenName(Token token_name);
+Rule const&GetRuleByName(RuleName name);
 
 std::string TokenToString(Token tok);
 bool IsRuleTokenName(Token tok);

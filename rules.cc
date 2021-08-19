@@ -210,6 +210,13 @@ bool StackContainsToken(StepDownStack const&stack, Token token) {
 	return false;
 }
 
+Rule const&GetRuleByName(RuleName name) {
+	auto found_rule = sRulesByRuleName.find(name);
+	assert(found_rule != sRulesByRuleName.end());
+	Rule const&rule = found_rule->second;
+	return rule;
+}
+
 void CreateStepDowns(RuleName ruleId, const Token needed_rule, StepDownStack stack,
 					 StepDownMap& stepDownMap) {
 	assert(sRulesByRuleName.find(ruleId) != sRulesByRuleName.end());

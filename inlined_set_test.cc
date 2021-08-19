@@ -77,6 +77,21 @@ TEST_F(InlinedSetTest, Simple) {
 	ASSERT_FALSE(test.contains(3.1f));
 }
 
+TEST_F(InlinedSetTest, MoveCtor) {
+	InlinedSet<float, 4> test;
+
+	ASSERT_FALSE(test.contains(3.1f));
+
+	test.insert(3.1f);
+
+	ASSERT_TRUE(test.contains(3.1f));
+
+	auto test2 = std::move(test);
+
+	ASSERT_TRUE(test2.contains(3.1f));
+	ASSERT_FALSE(test2.contains(2.0f));
+}
+
 TEST_F(InlinedSetTest, OverflowAndAlloc) {
 	InlinedSet<float, 4> test;
 

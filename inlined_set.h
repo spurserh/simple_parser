@@ -70,6 +70,17 @@ private:
 
 	InlinedSet() : n_in_local_(0) {}
 
+	InlinedSet(InlinedSet&& o)
+		: 	n_in_local_(o.n_in_local_), 
+			more_storage_(std::move(o.more_storage_)) {
+		for(int i=0;i<NInline;++i) {
+			local_storage_[i] = std::move(o.local_storage_[i]);
+		}
+
+		o.n_in_local_ = 0;
+		o.more_storage_.reset(0);
+	}
+
 	bool contains(T const&val)const {
 		const auto p = std::equal_range(local_storage_, local_storage_ + n_in_local_, val);
 		if(p.first == p.second) {
@@ -144,9 +155,9 @@ private:
 
 private:
 
+	unsigned int n_in_local_;
 	std::unique_ptr<absl::flat_hash_set<T> > more_storage_;
 	T local_storage_[NInline];
-	unsigned int n_in_local_;
 };
 
 
