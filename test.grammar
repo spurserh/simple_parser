@@ -18,7 +18,7 @@ expr expr_false FALSE
 expr expr_list expr COMMA expr
 
 #top top expr
-top top COMMA expr
+top top COMMA expr COMMA
 
 #top top COMMA TRUE
 

@@ -64,20 +64,32 @@ bool SyntaxTree::ConsumeInNode(Node* incomplete, TokenType next_tok_type, LexedT
 	incomplete->parsed.emplace_back(std::move(ParsedSlot(lexed_idx)));
 
 	if(incomplete->parsed.size() == incomplete->rule.pattern.size()) {
+fprintf(stderr, "-- ConsumeInNode complete\n");
+
+
 		// Move up: 
 		// - Setting completion flags
 		// - Finally, innserting the work ptr at first incomplete
 		for(Node *n = incomplete;n;n = n->parent) {
-			if(n->parsed.size() == incomplete->rule.pattern.size()) {
+fprintf(stderr, "-- move up %s %i/%i\n", 
+				GetRuleName(n->rule.name),
+				(int)n->parsed.size(),
+				(int)n->rule.pattern.size());
+
+			if(n->parsed.size() == n->rule.pattern.size()) {
+fprintf(stderr, "------ ConsumeInNode mark complete\n");
 				n->is_complete = true;
 				assert((n==incomplete) || n->parsed.back().subs.size());
 			} else {
 				// Set semantics will ensure no duplicates
 				work_ptrs_.insert(n);
+fprintf(stderr, "-- ConsumeInNode work higher\n");
 				break;
 			}
 		}
 	} else {
+fprintf(stderr, "-- ConsumeInNode continue working\n");
+
 		// Continue working on this node
 		work_ptrs_.insert(incomplete);
 	}
@@ -100,41 +112,45 @@ bool SyntaxTree::ConsumeToken(LexedToken const&next) {
 	for(Node* incomplete : prev_work_ptrs) {
 		assert(!incomplete->is_complete);
 
-		if(!ConsumeInNode(incomplete, next_tok_type, lexed_idx)) {
-			const Token next_tok = NextTokenInPattern(incomplete);
+		if(ConsumeInNode(incomplete, next_tok_type, lexed_idx)) {
+			continue;
+		}
 
-			fprintf(stderr, "-- next %s\n", TokenToString(next_tok).c_str());
+		const Token next_tok = NextTokenInPattern(incomplete);
 
-			StepContext ctx;
-			ctx.lexed = next.tok;
-			ctx.needed_rule = next_tok;
-			std::pair<StepDownMap::iterator, StepDownMap::iterator> found = GetStepDowns(ctx);
-			if(found.first != found.second) {
-				incomplete->parsed.emplace_back(std::move(ParsedSlot()));
-				for(auto it = found.first; it != found.second; ++it) {
-					fprintf(stderr, "TODO: Step down\n");
-					for(RuleName down_rule : it->second) {
-						fprintf(stderr, "-- %s\n", GetRuleName(down_rule));
+		fprintf(stderr, "-- next %s\n", TokenToString(next_tok).c_str());
 
-						Node* new_node = AddNode(GetRuleByName(down_rule));
-						
-						// AddNode can invalidate all Node* pointers..
+		StepContext ctx;
+		ctx.lexed = next.tok;
+		ctx.needed_rule = next_tok;
+		std::pair<StepDownMap::iterator, StepDownMap::iterator> found = GetStepDowns(ctx);
+		if(found.first != found.second) {
 
-						new_node->parent = incomplete;
-						incomplete->parsed.back().subs.insert(new_node);
-						assert(!new_node->is_complete);
-						const bool ret = ConsumeInNode(new_node, next_tok_type, lexed_idx);
-						assert(ret);
-						if(!ret) {
-							fprintf(stderr, "Internal consistency failure 180811\n");
-							return false;
-						}
+			incomplete->parsed.emplace_back(std::move(ParsedSlot()));
+
+			for(auto it = found.first; it != found.second; ++it) {
+
+				// TODO: Test with multi-level stack
+				assert(it->second.size() == 1);
+				for(RuleName down_rule : it->second) {
+					fprintf(stderr, "-- %s\n", GetRuleName(down_rule));
+
+					Node* new_node = AddNode(GetRuleByName(down_rule));
+
+					new_node->parent = incomplete;
+					incomplete->parsed.back().subs.insert(new_node);
+					assert(!new_node->is_complete);
+fprintf(stderr, "step down ConsumeInNode\n");
+					const bool ret = ConsumeInNode(new_node, next_tok_type, lexed_idx);
+					assert(ret);
+					if(!ret) {
+						fprintf(stderr, "Internal consistency failure 180811\n");
+						return false;
 					}
 				}
-			} else {
-				fprintf(stderr, "TODO: step up?\n");
-
 			}
+		} else {
+			fprintf(stderr, "TODO: step up?\n");
 		}
 	}
 
