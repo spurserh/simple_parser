@@ -9,16 +9,22 @@
 "true"	return LexGetTokenInstName("TRUE", "");
 "false"	return LexGetTokenInstName("FALSE", "");
 ","     return LexGetTokenInstName("COMMA", "");
+"-"     return LexGetTokenInstName("DASH", "");
 %%
 
 /GRAMMAR/
 
-expr expr_true TRUE
+
+true1 true11 TRUE
+true1 true12 TRUE DASH
+
+expr expr_true true1
+#expr expr_true TRUE
 expr expr_false FALSE
-expr expr_list expr COMMA expr
+expr expr_list COMMA expr expr
+expr expr_list_double COMMA COMMA expr expr
 
-#top top expr
-top top COMMA expr COMMA
-
-#top top COMMA TRUE
+top top expr
+#top top COMMA expr expr
+#top top FALSE
 

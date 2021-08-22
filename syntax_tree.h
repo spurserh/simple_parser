@@ -7,6 +7,7 @@
 #include "block_allocator.h"
 #include "rules.h"
 
+#include <sstream>
 #include <vector>
 
 namespace parser {
@@ -18,10 +19,10 @@ typedef unsigned LexedTokenIdx;
 struct Node;
 
 struct ParsedSlot {
-	ParsedSlot(LexedTokenIdx lexed) : lexed(lexed) { }
-	ParsedSlot() : lexed(0) { }
+	ParsedSlot(LexedTokenIdx lexed) : lexed_idx(lexed) { }
+	ParsedSlot() : lexed_idx(0) { }
 
-	LexedTokenIdx 				lexed;
+	LexedTokenIdx 				lexed_idx;
 	InlinedSet<Node*, 4> 	    subs;
 };
 
@@ -72,6 +73,9 @@ struct SyntaxTree {
 
 	bool Complete()const;
 
+	// multiline=0 to enable
+	std::string ToString(int multiline=-1, Node const*n=0)const;
+
 	// TODO: Generate graph
 
   private:
@@ -80,12 +84,17 @@ struct SyntaxTree {
 
   	bool ConsumeInNode(Node* incomplete, TokenType next_tok_type, LexedTokenIdx lexed_idx);
 
+  	LexedToken const&GetLexedTokenByIdx(LexedTokenIdx idx)const;
+
   	Node* AddNode(Rule const&rule);
+  	void DeleteNode(Node* n);
 
   	bool NodeComplete(Node const* node)const;
   	Node const*GetTop()const;
 
   	Token NextTokenInPattern(Node const*node)const;
+
+  	static void MakeIndent(std::ostringstream &ostr, int n);
 
   	// Incomplete nodes cannot be children of complete ones
   	// The next token is always consumed by the bottom-most incomplete nodes
