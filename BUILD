@@ -81,7 +81,8 @@ cc_library(
     deps = [":inlined_set",
             ":rules",
             ":block_allocator",
-            "@com_google_absl//absl/container:inlined_vector"]
+            "@com_google_absl//absl/container:inlined_vector",
+            "@boost//:range"]
 )
 
 cc_test(
