@@ -77,6 +77,22 @@ TEST_F(InlinedSetTest, Simple) {
 	ASSERT_FALSE(test.contains(3.1f));
 }
 
+
+
+TEST_F(InlinedSetTest, SimpleClear) {
+	InlinedSet<float, 4> test;
+
+	ASSERT_FALSE(test.contains(3.1f));
+
+	test.insert(3.1f);
+
+	ASSERT_TRUE(test.contains(3.1f));
+
+	test.clear();
+
+	ASSERT_FALSE(test.contains(3.1f));
+}
+
 TEST_F(InlinedSetTest, MoveCtor) {
 	InlinedSet<float, 4> test;
 
@@ -89,6 +105,26 @@ TEST_F(InlinedSetTest, MoveCtor) {
 	auto test2 = std::move(test);
 
 	ASSERT_TRUE(test2.contains(3.1f));
+	ASSERT_FALSE(test2.contains(2.0f));
+}
+
+TEST_F(InlinedSetTest, CopyCtor) {
+	InlinedSet<float, 1> test;
+
+	ASSERT_FALSE(test.contains(3.1f));
+
+	test.insert(3.1f);
+
+	ASSERT_TRUE(test.contains(3.1f));
+
+	test.insert(2.1f);
+	test.insert(6.1f);
+
+	InlinedSet<float, 1> test2(test);
+
+	ASSERT_TRUE(test2.contains(3.1f));
+	ASSERT_TRUE(test2.contains(2.1f));
+	ASSERT_TRUE(test2.contains(6.1f));
 	ASSERT_FALSE(test2.contains(2.0f));
 }
 

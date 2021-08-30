@@ -21,7 +21,7 @@ true1 true12 TRUE DASH
 expr expr_true true1
 #expr expr_true TRUE
 expr expr_false FALSE
-#expr expr_list COMMA expr expr
+expr expr_list COMMA expr expr
 expr expr_list_double COMMA COMMA expr expr
 
 top top expr

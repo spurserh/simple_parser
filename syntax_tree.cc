@@ -40,8 +40,8 @@ bool SyntaxTree::Init(char const* top_rule_name) {
 	return true;
 }
 
-bool SyntaxTree::Complete()const {
-	return IsComplete(GetTop());
+bool SyntaxTree::CanComplete()const {
+	return CanComplete(GetTop());
 }
 
 Node *SyntaxTree::GetTop()const {
@@ -126,6 +126,8 @@ fprintf(stderr, "ConsumeToken tree:\n%s\n",
 	// Index from 1
 	const LexedTokenIdx lexed_idx = token_array_.size();
 
+	bool did_consume = false;
+
 	const auto prev_work_ptrs = std::move(work_ptrs_);
 
 	for(Node* incomplete : prev_work_ptrs) {
@@ -137,6 +139,7 @@ fprintf(stderr, "*** next work_ptr tree:\n%s\n",
 
 		if(ConsumeInNode(incomplete, next_tok_type, lexed_idx)) {
 			UpdateWorkPtr(incomplete);
+			did_consume = true;
 			continue;
 		}
 
@@ -182,6 +185,7 @@ fprintf(stderr, "*** next work_ptr tree:\n%s\n",
 					return false;
 				}
 
+				did_consume = true;
 				last_descendants.emplace_back(last_descendant);
 			}
 
@@ -195,24 +199,49 @@ fprintf(stderr, "*** next work_ptr tree:\n%s\n",
 	}
 
 	fprintf(stderr, "\n>> After ConsumeToken (ptrs %i, complete %i):\n%s\n",
-		(int)work_ptrs_.size(), (int)Complete(),
+		(int)work_ptrs_.size(), (int)IsComplete(GetTop()),
 		ToString(0).c_str());
 
 	assert(NodeIsSane(GetTop()));
 
-	return Complete() || (work_ptrs_.size() > 0);
+	return did_consume;
 }
 
 bool SyntaxTree::NodeIsSane(Node *n)const {
+	if(n->parent) {
+		bool found_in_parent = false;
+		for(ParsedSlot const&slot : n->parent->parsed) {
+			for(Node* sub : slot.subs) {
+				if(sub == n) {
+					found_in_parent = true;
+					break;
+				}
+			}
+			if(found_in_parent) {
+				break;
+			}
+		}
+		if(!found_in_parent) {
+			fprintf(stderr, "Node is insane: didn't find in parent\n");
+			return false;
+		}
+	}
+
 	if(n->parsed.size() > 0) {
 		// All nodes must be complete to the left of the newest
 		for(int li=0;li<(n->parsed.size()-1);++li) {
 			ParsedSlot const&slot = n->parsed[li];
 			for(Node* sub : slot.subs) {
 				if(!CheckComplete_slow(sub)) {
+					fprintf(stderr, "Node is insane: !CheckComplete_slow() for left-hand sub\n");
 					return false;
 				}
 				if(!IsComplete(sub)) {
+					fprintf(stderr, "Node is insane: !IsComplete() for left-hand sub\n");
+					return false;
+				}
+				if(NodeContainsWorkPtr_slow(sub)) {
+					fprintf(stderr, "Node is insane: Left-hand sub contains work ptr\n");
 					return false;
 				}
 				/*
@@ -277,25 +306,52 @@ void SyntaxTree::MarkCompleteAndMoveUp(Node* incomplete) {
 		if(n->parsed.size() == n->rule.pattern.size()) {
 			assert((n==incomplete) || n->parsed.back().subs.size());
 		} else {
-			if(n->parsed.size() > 0) {
-				ParsedSlot const&last_slot = n->parsed.back();
-				bool all_subs_complete = true;
-				for(Node* sub : last_slot.subs) {
-					if(!IsComplete(sub)) {
-						all_subs_complete = false;
-						break;
-					}
-				}
-				if(!all_subs_complete) {
-					// Cannot advance work ptr beyond incomplete node
-					// Need to resolve by cloning / splitting the node
-
-					fprintf(stderr, "TODO: Not all subs complete in %s!\n", GetRuleName(n->rule.name));
-					exit(1);
+			ParsedSlot const&last_slot = n->parsed.back();
+			bool all_subs_complete = true;
+			for(Node* sub : last_slot.subs) {
+				if(!IsComplete(sub)) {
+					all_subs_complete = false;
+					break;
 				}
 			}
-			// Set semantics will ensure no duplicates
-			work_ptrs_.insert(n);
+			if(!all_subs_complete) {
+				absl::InlinedVector<Node*, 2> completes;
+				absl::InlinedVector<Node*, 2> incompletes;
+
+				for(Node* sub : last_slot.subs) {
+					if(IsComplete(sub)) {
+						completes.push_back(sub);
+					} else {
+						incompletes.push_back(sub);
+					}
+				}
+
+				// Cannot advance work ptr beyond incomplete node
+				// Need to resolve by cloning / splitting the node
+
+				// Shallow copy is fine for all but last ParsedSlot
+				// For that slot, complete subs go into one copy, incomplete into the other
+				Node* copy_for_completes = ShallowCopyNode(n);
+
+				
+				for(Node* sub : incompletes) {
+					copy_for_completes->parsed.back().subs.erase(sub);
+				}
+				for(Node* sub : completes) {
+					n->parsed.back().subs.erase(sub);
+					sub->parent = copy_for_completes;
+				}
+
+				assert(n->parent);
+				n->parent->parsed.back().subs.insert(copy_for_completes);
+				
+				assert(NodeIsSane(n));
+				assert(NodeIsSane(copy_for_completes));
+
+				work_ptrs_.insert(copy_for_completes);
+			} else {
+				work_ptrs_.insert(n);
+			}
 			break;
 		}
 	}
@@ -315,6 +371,17 @@ bool SyntaxTree::IsComplete(Node* n)const {
 	assert(CheckComplete_slow(n));
 	//assert(n->subs_complete == CountSubsComplete_slow(n));
 
+	return true;
+}
+
+bool SyntaxTree::CanComplete(Node* n)const {
+	if(n->parsed.size() < n->rule.pattern.size()) {
+		return false;
+	}
+	assert(n->parsed.size() > 0);
+	if(CountSubsComplete_slow(n) == 0) {
+		return false;
+	}
 	return true;
 }
 
@@ -345,10 +412,11 @@ unsigned SyntaxTree::CountSubsComplete_slow(Node *n)const {
 }
 
 Node* SyntaxTree::AddNode(Rule const&rule) {
-//	Node n(rule);
-//	node_array_.emplace_back(std::move(n));
-
 	return new (node_array_.allocate()) Node (rule);
+}
+
+Node* SyntaxTree::ShallowCopyNode(Node* n) {
+	return new (node_array_.allocate()) Node (*n);
 }
 
 void SyntaxTree::DeleteNode(Node* n) {

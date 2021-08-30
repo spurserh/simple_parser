@@ -94,7 +94,7 @@ struct SyntaxTree {
 		return true;
 	}
 
-	bool Complete()const;
+	bool CanComplete()const;
 
 	// multiline=0 to enable
 	std::string ToString(int multiline=-1, Node const*n=0)const;
@@ -124,10 +124,12 @@ struct SyntaxTree {
 
   	void MarkCompleteAndMoveUp(Node* incomplete);
   	bool IsComplete(Node* n)const;
+  	bool CanComplete(Node* n)const;
 
   	LexedToken const&GetLexedTokenByIdx(LexedTokenIdx idx)const;
 
   	Node* AddNode(Rule const&rule);
+  	Node* ShallowCopyNode(Node* n);
   	void DeleteNode(Node* n);
 
   	bool NodeComplete(Node const* node)const;

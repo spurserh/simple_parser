@@ -70,6 +70,16 @@ private:
 
 	InlinedSet() : n_in_local_(0) {}
 
+	InlinedSet(InlinedSet const&o)
+		: 	n_in_local_(o.n_in_local_) {
+		if(o.more_storage_) {
+			more_storage_.reset(new absl::flat_hash_set<T>(*o.more_storage_));
+		}
+		for(int i=0;i<NInline;++i) {
+			local_storage_[i] = o.local_storage_[i];
+		}
+	}
+
 	InlinedSet(InlinedSet&& o)
 		: 	n_in_local_(o.n_in_local_), 
 			more_storage_(std::move(o.more_storage_)) {
@@ -132,6 +142,14 @@ private:
 		}
 
 		--n_in_local_;
+	}
+
+	void clear() {
+		for(size_t i=0;i<n_in_local_;++i) {
+			local_storage_[i].~T();
+		}
+		n_in_local_ = 0;
+		more_storage_.release();
 	}
 
 	size_t size()const {

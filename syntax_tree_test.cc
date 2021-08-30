@@ -17,7 +17,7 @@ TEST(SyntaxTreeTest, SimpleStepDown) {
 	tok.tok = parser::GetTokenInstName("TRUE");
 	tokens.push_back(tok);
 	EXPECT_TRUE(tree.Parse(tokens.begin(), tokens.end()));
-	EXPECT_TRUE(tree.Complete());
+	EXPECT_TRUE(tree.CanComplete());
 }
 
 TEST(SyntaxTreeTest, TooLong) {
@@ -28,7 +28,7 @@ TEST(SyntaxTreeTest, TooLong) {
 	tok.tok = parser::GetTokenInstName("TRUE");
 	tokens.push_back(tok);
 	EXPECT_TRUE(tree.Parse(tokens.begin(), tokens.begin()+1));
-	EXPECT_TRUE(tree.Complete());
+	EXPECT_TRUE(tree.CanComplete());
 	tok.tok = parser::GetTokenInstName("TRUE");
 	tokens.push_back(tok);
 	EXPECT_FALSE(tree.Parse(tokens.begin()+1, tokens.end()));
@@ -46,10 +46,8 @@ TEST(SyntaxTreeTest, RuleOutBranch) {
 	tok.tok = parser::GetTokenInstName("FALSE");
 	tokens.push_back(tok);
 
-	// TODO: Print out AST
-
 	EXPECT_TRUE(tree.Parse(tokens.begin(), tokens.end()));
-	EXPECT_TRUE(tree.Complete());
+	EXPECT_TRUE(tree.CanComplete());
 }
 
 TEST(SyntaxTreeTest, IncompleteBranch) {
@@ -62,15 +60,8 @@ TEST(SyntaxTreeTest, IncompleteBranch) {
 	tokens.push_back(tok);
 	tok.tok = parser::GetTokenInstName("TRUE");
 	tokens.push_back(tok);
-	tok.tok = parser::GetTokenInstName("FALSE");
-	tokens.push_back(tok);
-
-	// TODO: Check that extra branch was removed
-
-	// TODO: Print out AST
-
 	EXPECT_TRUE(tree.Parse(tokens.begin(), tokens.end()));
-	EXPECT_TRUE(tree.Complete());
+	EXPECT_FALSE(tree.CanComplete());
 }
 
 // TODO: Test of multiple step ups to remove
