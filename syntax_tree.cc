@@ -204,6 +204,8 @@ fprintf(stderr, "*** next work_ptr tree:\n%s\n",
 
 	assert(NodeIsSane(GetTop()));
 
+	assert(!((!did_consume) && (!work_ptrs_.size())) );
+
 	return did_consume;
 }
 
@@ -441,15 +443,8 @@ fprintf(stderr, "Delete %s, tree:\n%s\n",
 		size_t n_subs_last = remove_from->parsed.back().subs.size();
 		assert(n_subs_last > 0);
 
-fprintf(stderr, "At remove_from %s (s %i) to_remove %s (s %i)\n", 
-	GetRuleName(remove_from->rule.name),
-	(int)remove_from->parsed.back().subs.size(),
-	GetRuleName(to_remove->rule.name),
-	(int)to_remove->parsed.back().subs.size());
-
 
 		if((n_subs_last > 1) || (remove_from == GetTop())) {
-fprintf(stderr, "--- break\n");
 			break;
 		}
 

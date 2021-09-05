@@ -32,6 +32,7 @@ TEST(SyntaxTreeTest, TooLong) {
 	tok.tok = parser::GetTokenInstName("TRUE");
 	tokens.push_back(tok);
 	EXPECT_FALSE(tree.Parse(tokens.begin()+1, tokens.end()));
+	EXPECT_FALSE(tree.CanComplete());
 }
 
 TEST(SyntaxTreeTest, RuleOutBranch) {
@@ -63,6 +64,25 @@ TEST(SyntaxTreeTest, IncompleteBranch) {
 	EXPECT_TRUE(tree.Parse(tokens.begin(), tokens.end()));
 	EXPECT_FALSE(tree.CanComplete());
 }
+
+TEST(SyntaxTreeTest, OneComplete) {
+	parser::SyntaxTree tree;
+	ASSERT_TRUE(tree.Init("top"));
+	parser::LexedToken tok;
+	std::vector<parser::LexedToken> tokens;
+	tok.tok = parser::GetTokenInstName("COMMA");
+	tokens.push_back(tok);
+	tok.tok = parser::GetTokenInstName("COMMA");
+	tokens.push_back(tok);
+	tok.tok = parser::GetTokenInstName("TRUE");
+	tokens.push_back(tok);
+	tok.tok = parser::GetTokenInstName("FALSE");
+	tokens.push_back(tok);
+
+	EXPECT_TRUE(tree.Parse(tokens.begin(), tokens.end()));
+	EXPECT_TRUE(tree.CanComplete());
+}
+
 
 // TODO: Test of multiple step ups to remove
 
