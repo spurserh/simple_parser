@@ -21,11 +21,20 @@ struct RawRule {
 	}
 };
 
+bool IsLeafRule_slow(absl::InlinedVector<Token, 8> const&pattern) {
+	for(Token tok : pattern) {
+		if(!TokenIsLexical(tok)) {
+			return false;
+		}
+	}
+	return true;
+}
+
 Rule::Rule(Token token_name, 
 	 RuleName name,
 	 std::string user_data,
 	 absl::InlinedVector<Token, 8> pattern)
-  : token_name(token_name), name(name), user_data(user_data), pattern(pattern)
+  : token_name(token_name), name(name), user_data(user_data), pattern(pattern), is_leaf(IsLeafRule_slow(pattern))
 {
 }
 
@@ -383,6 +392,7 @@ StepUpMap BuildStepUpMap(StepDownMap &stepDownMap) {
 }
 
 
+
 StepDownMap sStepDownMap;
 StepUpMap sStepUpMap = BuildStepUpMap(sStepDownMap);
 
@@ -401,5 +411,6 @@ std::multimap<StepContext, StepDownStack> const&GetStepDownMap() {
 std::multimap<StepContext, StepUpAction> const&GetStepUpMap() {
 	return sStepUpMap;
 }
+
 
 }  // namespace parser

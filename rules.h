@@ -46,6 +46,7 @@ struct Rule {
 	const RuleName name;
 	const std::string user_data;
 	absl::InlinedVector<Token, 8> pattern;
+	const bool is_leaf;
 
 	Rule(Token token_name, 
 		 RuleName name,
@@ -70,6 +71,8 @@ Rule const&GetRuleByName(RuleName name);
 
 std::string TokenToString(Token tok);
 bool IsRuleTokenName(Token tok);
+
+
 
 struct StepContext {
 	StepContext() : lexed(0), needed_rule(0) { }

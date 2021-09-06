@@ -76,12 +76,20 @@ TEST(SyntaxTreeTest, OneComplete) {
 	tokens.push_back(tok);
 	tok.tok = parser::GetTokenInstName("COMMA");
 	tokens.push_back(tok);
-	tok.tok = parser::GetTokenInstName("TRUE");
-	tokens.push_back(tok);
 	tok.tok = parser::GetTokenInstName("FALSE");
+	tokens.push_back(tok);
+	tok.tok = parser::GetTokenInstName("TRUE");
 	tokens.push_back(tok);
 
 	EXPECT_TRUE(tree.Parse(tokens.begin(), tokens.end()));
+	EXPECT_FALSE(tree.FullyComplete());
+	EXPECT_TRUE(tree.CanComplete());
+
+	tree.DeleteIncomplete();
+
+	fprintf(stderr, "After DeleteIncomplete %s\n", tree.ToString(0).c_str());
+
+	EXPECT_TRUE(tree.FullyComplete());
 	EXPECT_TRUE(tree.CanComplete());
 }
 

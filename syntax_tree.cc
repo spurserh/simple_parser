@@ -44,6 +44,10 @@ bool SyntaxTree::CanComplete()const {
 	return CanComplete(GetTop());
 }
 
+bool SyntaxTree::FullyComplete()const {
+	return CheckComplete_slow(GetTop());
+}
+
 Node *SyntaxTree::GetTop()const {
 	assert(node_array_.size() > 0);
 	if(node_array_.size() == 0) {
@@ -398,15 +402,87 @@ bool SyntaxTree::IsComplete(Node* n)const {
 }
 
 bool SyntaxTree::CanComplete(Node* n)const {
-	if(n->parsed.size() < n->rule.pattern.size()) {
+	if(n->parsed.size() != n->rule.pattern.size()) {
 		return false;
 	}
-	assert(n->parsed.size() > 0);
-	if(CountSubsComplete_slow(n) == 0) {
-		return false;
+	if(n->parsed.back().subs.size()) {
+		bool any_subs_can_complete = false;
+		for(Node* sub : n->parsed.back().subs) {
+			if(CanComplete(sub)) {
+				any_subs_can_complete = true;
+				break;
+			}
+		}
+		if(!any_subs_can_complete) {
+			return false;
+		}
+	} else {
+		if(!TokenIsLexical(n->rule.pattern[0])) {
+			return false;
+		}
 	}
 	return true;
 }
+
+void SyntaxTree::DeleteIncomplete() {
+	// Collect incomplete nodes
+	// (What if they are descendents?)
+	while(true) {
+		absl::InlinedVector<Node*, 4> incompletes;
+		GetPatternIncompleteNodes(incompletes);
+		if(incompletes.size() == 0) {
+			break;
+		}
+fprintf(stderr, ">>> Deleting incomplete\n");
+		DeleteNode(incompletes[0]);
+	}	
+
+	// Collect all incomplete leaves
+	{
+		absl::InlinedVector<Node*, 4> incompletes;
+		GetIncompleteLeaves(incompletes);
+
+		// Then delete, avoiding iteration issues
+		for(Node* n : incompletes) {
+			DeleteNode(n);
+		}
+	}
+}
+
+void SyntaxTree::GetIncompleteLeaves(absl::InlinedVector<Node*, 4> &output, Node* n) {
+	if(n == 0) {
+		n = GetTop();
+	}
+
+	if(n->rule.is_leaf && (n->parsed.size() < n->rule.pattern.size())) {
+		output.push_back(n);
+		return;
+	}
+
+	if(n->parsed.back().subs.size()) {
+		for(Node* sub : n->parsed.back().subs) {
+			GetIncompleteLeaves(output, sub);
+		}
+	}
+}
+
+void SyntaxTree::GetPatternIncompleteNodes(absl::InlinedVector<Node*, 4> &output, Node* n) {
+	if(n == 0) {
+		n = GetTop();
+	}
+
+	if((!n->rule.is_leaf) && (n->parsed.size() < n->rule.pattern.size())) {
+		output.push_back(n);
+		return;
+	}
+
+	if(n->parsed.back().subs.size()) {
+		for(Node* sub : n->parsed.back().subs) {
+			GetPatternIncompleteNodes(output, sub);
+		}
+	}
+}
+
 
 bool SyntaxTree::CheckComplete_slow(Node *n)const {
 	for(ParsedSlot const&slot : n->parsed) {
@@ -442,15 +518,25 @@ Node* SyntaxTree::ShallowCopyNode(Node* n) {
 	return new (node_array_.allocate()) Node (*n);
 }
 
+void SyntaxTree::RemoveWorkPtrsFromTree(Node *n) {
+	work_ptrs_.erase(n);
+
+	if(n->parsed.size() > 0) {
+		for(Node* n : n->parsed.back().subs) {
+			RemoveWorkPtrsFromTree(n);
+		}
+	}
+}
+
 void SyntaxTree::DeleteNode(Node* n) {
 	assert(n!=GetTop());
 	assert(n->parent);
-
+/*
 	if(NodeContainsWorkPtr_slow(n)) {
 		fprintf(stderr, "TODO: Remove work_ptr from deleted node\n");
 		exit(1);
 	}
-
+*/
 fprintf(stderr, "Delete %s, tree:\n%s\n", 
 	GetRuleName(n->rule.name),
 	ToString(0).c_str());
@@ -474,8 +560,12 @@ fprintf(stderr, "Delete %s, tree:\n%s\n",
 		remove_from = remove_from->parent;
 	}
 
+
 	assert(to_remove);
 	assert(remove_from);
+	RemoveWorkPtrsFromTree(to_remove);
+	assert(!NodeContainsWorkPtr_slow(to_remove));
+fprintf(stderr, "\nTODO %s\n", ToString(0, to_remove).c_str());
 
 	const size_t prev_size = remove_from->parsed.back().subs.size();
 	remove_from->parsed.back().subs.erase(to_remove);

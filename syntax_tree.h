@@ -95,6 +95,9 @@ struct SyntaxTree {
 	}
 
 	bool CanComplete()const;
+	bool FullyComplete()const;
+
+	void DeleteIncomplete();
 
 	// multiline=0 to enable
 	std::string ToString(int multiline=-1, Node const*n=0)const;
@@ -108,6 +111,11 @@ struct SyntaxTree {
 
   	// Recursively check that all sub-nodes are complete, without using subs_complete
   	bool CheckComplete_slow(Node *n)const;
+
+  	void GetIncompleteLeaves(absl::InlinedVector<Node*, 4> &output, Node* n=0);
+  	void GetPatternIncompleteNodes(absl::InlinedVector<Node*, 4> &output, Node* n=0);
+
+  	void RemoveWorkPtrsFromTree(Node *n);
 
   	unsigned CountSubsComplete_slow(Node *n)const;
 
