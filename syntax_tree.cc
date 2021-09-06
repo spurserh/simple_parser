@@ -120,6 +120,14 @@ fprintf(stderr, "ConsumeToken tree:\n%s\n",
 
 	assert(TokenIsLexical(next.tok));
 
+	{
+		const auto prev_work_ptrs = std::move(work_ptrs_);
+
+		for(Node* n : prev_work_ptrs) {
+			UpdateWorkPtr(n);
+		}
+	}
+
 	const TokenType next_tok_type = GetTokenInstType(next.tok);
 
 	token_array_.push_back(next);
@@ -138,7 +146,8 @@ fprintf(stderr, "*** next work_ptr tree:\n%s\n",
 
 
 		if(ConsumeInNode(incomplete, next_tok_type, lexed_idx)) {
-			UpdateWorkPtr(incomplete);
+//			UpdateWorkPtr(incomplete);
+			work_ptrs_.insert(incomplete);
 			did_consume = true;
 			continue;
 		}
@@ -190,7 +199,8 @@ fprintf(stderr, "*** next work_ptr tree:\n%s\n",
 			}
 
 			for(Node* last_descendant : last_descendants) {
-				UpdateWorkPtr(last_descendant);
+//				UpdateWorkPtr(last_descendant);
+				work_ptrs_.insert(last_descendant);
 			}
 
 		} else {
@@ -202,11 +212,13 @@ fprintf(stderr, "*** next work_ptr tree:\n%s\n",
 		(int)work_ptrs_.size(), (int)IsComplete(GetTop()),
 		ToString(0).c_str());
 
+	for(Node *ptr : work_ptrs_) {
+		fprintf(stderr, "-- %s\n", ToString(-1, ptr).c_str());
+	}
+
 	assert(NodeIsSane(GetTop()));
 
-	assert(!((!did_consume) && (!work_ptrs_.size())) );
-
-	return did_consume;
+	return did_consume || work_ptrs_.size();
 }
 
 bool SyntaxTree::NodeIsSane(Node *n)const {
@@ -286,6 +298,9 @@ Node* SyntaxTree::BuildStepDownStack(StepDownStack const&stack,
 }
 
 void SyntaxTree::MarkCompleteAndMoveUp(Node* incomplete) {
+	
+	int inserted_work_ptrs = 0;
+
 	// Move up: 
 	// - Setting completion flags
 	// - Finally, inserting the work ptr at first incomplete
@@ -351,13 +366,19 @@ void SyntaxTree::MarkCompleteAndMoveUp(Node* incomplete) {
 				assert(NodeIsSane(copy_for_completes));
 
 				work_ptrs_.insert(copy_for_completes);
+				++inserted_work_ptrs;
 			} else {
 				work_ptrs_.insert(n);
+				++inserted_work_ptrs;
 			}
 			break;
 		}
 	}
-	fprintf(stderr, "MarkCompleteAndMoveUp }\n");
+	fprintf(stderr, "===== MarkCompleteAndMoveUp inserted_work_ptrs %i }\n",
+		inserted_work_ptrs);
+	if(inserted_work_ptrs == 0) {
+		DeleteNode(incomplete);
+	}
 }
 
 bool SyntaxTree::IsComplete(Node* n)const {
@@ -476,16 +497,22 @@ std::string SyntaxTree::ToString(int multiline, Node const*n)const {
 	ostringstream ostr;
 
 	ostr << GetRuleName(n->rule.name) << " {";
-	MakeIndent(ostr, multiline+1);
+	if(multiline >= 0) {
+		MakeIndent(ostr, multiline+1);
+	}
 
-	for(size_t i=0;i<n->rule.pattern.size();++i) {
+	for(size_t i=0;i<=n->rule.pattern.size();++i) {
 
 		auto separate = [i, n, &ostr, multiline]() {
-			if(i < (n->rule.pattern.size()-1)) {
+			if(i <= (n->rule.pattern.size()-1)) {
 				ostr << " ";
-				MakeIndent(ostr, multiline+1);
+				if(multiline >= 0) {
+					MakeIndent(ostr, multiline+1);
+				}
 			} else {
-				MakeIndent(ostr, multiline);
+				if(multiline >= 0) {
+					MakeIndent(ostr, multiline);
+				}
 			}
 		};
 
@@ -494,7 +521,14 @@ std::string SyntaxTree::ToString(int multiline, Node const*n)const {
 				ostr << "^";
 			}
 
-			ostr << TokenToString(n->rule.pattern[i]);
+			if(i < n->rule.pattern.size()) {
+				ostr << TokenToString(n->rule.pattern[i]);
+			}
+			separate();
+			continue;
+		}
+
+		if(i >= n->parsed.size()) {
 			separate();
 			continue;
 		}
@@ -509,7 +543,9 @@ std::string SyntaxTree::ToString(int multiline, Node const*n)const {
 
 		if(slot.subs.size() > 1) {
 			ostr << "(";
-			MakeIndent(ostr, multiline+1);
+			if(multiline >= 0) {
+				MakeIndent(ostr, multiline+1);
+			}
 		}
 		size_t si = 0;
 		for(Node const*sn : slot.subs) {
@@ -523,14 +559,18 @@ std::string SyntaxTree::ToString(int multiline, Node const*n)const {
 		}
 		if(slot.subs.size() > 1) {
 			ostr << ")";
-			MakeIndent(ostr, multiline+1);
+			if(multiline >= 0) {
+				MakeIndent(ostr, multiline+1);
+			}
 		}
 
 		separate();
 	}
 
 	ostr << "}";
-	MakeIndent(ostr, multiline);
+	if(multiline >= 0) {
+		MakeIndent(ostr, multiline);
+	}
 
 	return ostr.str();
 }
