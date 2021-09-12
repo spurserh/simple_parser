@@ -124,6 +124,67 @@ fprintf(stderr, "ConsumeToken tree:\n%s\n",
 
 	assert(TokenIsLexical(next.tok));
 
+// Step up needs to happen here?
+	{
+		const auto prev_work_ptrs(work_ptrs_);
+		for(Node* work_n : prev_work_ptrs) {
+			if(!IsComplete(work_n)) {
+				continue;
+			}
+
+			fprintf(stderr, "== Try step up on %s (tok %s)\n", 
+				GetRuleName(work_n->rule.name),
+				TokenToString(next.tok).c_str());
+
+			// Step up then step down
+			for(Node* n = work_n;n && (n!=GetTop());n = n->parent) {
+				StepContext ctx;
+				ctx.lexed = GetTokenInstType(next.tok);
+				ctx.needed_rule = n->rule.token_name;
+
+				std::pair<StepUpMap::iterator, StepUpMap::iterator> found = GetStepUps(ctx);
+				if(found.first != found.second) {
+					Node* parent = n->parent;
+					assert(parent);
+					assert(parent->parsed.size());
+					ParsedSlot &parent_last_slot = parent->parsed.back();
+					parent_last_slot.subs.erase(n);
+					assert(work_ptrs_.contains(n));
+					work_ptrs_.erase(n);
+
+					for(StepUpMap::iterator it = found.first;
+						it != found.second;
+						++it) {
+						const StepUpAction& action = it->second;
+
+						assert(GetRuleByName(action.step_up_rule_id).token_name 
+								== GetRuleByName(n->rule.name).token_name);
+						assert(action.then_step_down.size() == 0);
+
+						fprintf(stderr, "======== Can step up on %s with rule %s stack %i\n", 
+								GetRuleName(n->rule.name),
+								GetRuleName(action.step_up_rule_id),
+								(int)action.then_step_down.size());
+
+						// shallow copy is safe because node is complete
+						Node* new_child = ShallowCopyNode(n);
+						work_ptrs_.insert(new_child);
+
+						Node* new_node = AddNode(GetRuleByName(action.step_up_rule_id));
+						new_node->AddParsed(new_child);
+
+						new_child->parent = new_node;
+						new_node->parent = parent;
+						parent_last_slot.subs.insert(new_node);
+					}
+					// TODO: Multi step up
+					break;
+				}
+
+			}
+		}
+	}
+
 	{
 		const auto prev_work_ptrs = std::move(work_ptrs_);
 
@@ -165,7 +226,7 @@ fprintf(stderr, "*** next work_ptr tree:\n%s\n",
 			continue;
 		}
 
-//		fprintf(stderr, "-- next %s\n", TokenToString(next_tok).c_str());
+
 
 		StepContext ctx;
 		ctx.lexed = GetTokenInstType(next.tok);
@@ -175,7 +236,6 @@ fprintf(stderr, "*** next work_ptr tree:\n%s\n",
 		if(found.first != found.second) {
 
 			// One new slot for all step downs (multiple subs created)
-			//incomplete->parsed.emplace_back(std::move(ParsedSlot()));
 			incomplete->AddParsed();
 
 			absl::InlinedVector<Node*, 4> last_descendants;
@@ -203,13 +263,12 @@ fprintf(stderr, "*** next work_ptr tree:\n%s\n",
 			}
 
 			for(Node* last_descendant : last_descendants) {
-//				UpdateWorkPtr(last_descendant);
 				work_ptrs_.insert(last_descendant);
 			}
 
-		} else {
-			fprintf(stderr, "TODO: step up?\n");
 		}
+
+
 	}
 
 	fprintf(stderr, "\n>> After ConsumeToken (ptrs %i, complete %i):\n%s\n",
@@ -424,65 +483,30 @@ bool SyntaxTree::CanComplete(Node* n)const {
 	return true;
 }
 
+Node* SyntaxTree::FindIncompletePattern(Node* within)const {
+	if(within->parsed.size() < within->rule.pattern.size()) {
+		return within;
+	}
+
+	for(const ParsedSlot& slot : within->parsed) {
+		for(Node* sub : slot.subs) {
+			Node* ret = FindIncompletePattern(sub);
+			if(ret != nullptr) {
+				return ret;
+			}
+		}
+	}
+
+	return nullptr;
+}
+
 void SyntaxTree::DeleteIncomplete() {
-	// Collect incomplete nodes
-	// (What if they are descendents?)
-	while(true) {
-		absl::InlinedVector<Node*, 4> incompletes;
-		GetPatternIncompleteNodes(incompletes);
-		if(incompletes.size() == 0) {
-			break;
-		}
-fprintf(stderr, ">>> Deleting incomplete\n");
-		DeleteNode(incompletes[0]);
-	}	
-
-	// Collect all incomplete leaves
-	{
-		absl::InlinedVector<Node*, 4> incompletes;
-		GetIncompleteLeaves(incompletes);
-
-		// Then delete, avoiding iteration issues
-		for(Node* n : incompletes) {
-			DeleteNode(n);
-		}
+	while(!FullyComplete()) {
+		// Don't delete top
+		Node* incomplete = FindIncompletePattern(GetTop());
+		DeleteNode(incomplete);
 	}
 }
-
-void SyntaxTree::GetIncompleteLeaves(absl::InlinedVector<Node*, 4> &output, Node* n) {
-	if(n == 0) {
-		n = GetTop();
-	}
-
-	if(n->rule.is_leaf && (n->parsed.size() < n->rule.pattern.size())) {
-		output.push_back(n);
-		return;
-	}
-
-	if(n->parsed.back().subs.size()) {
-		for(Node* sub : n->parsed.back().subs) {
-			GetIncompleteLeaves(output, sub);
-		}
-	}
-}
-
-void SyntaxTree::GetPatternIncompleteNodes(absl::InlinedVector<Node*, 4> &output, Node* n) {
-	if(n == 0) {
-		n = GetTop();
-	}
-
-	if((!n->rule.is_leaf) && (n->parsed.size() < n->rule.pattern.size())) {
-		output.push_back(n);
-		return;
-	}
-
-	if(n->parsed.back().subs.size()) {
-		for(Node* sub : n->parsed.back().subs) {
-			GetPatternIncompleteNodes(output, sub);
-		}
-	}
-}
-
 
 bool SyntaxTree::CheckComplete_slow(Node *n)const {
 	for(ParsedSlot const&slot : n->parsed) {
@@ -531,12 +555,7 @@ void SyntaxTree::RemoveWorkPtrsFromTree(Node *n) {
 void SyntaxTree::DeleteNode(Node* n) {
 	assert(n!=GetTop());
 	assert(n->parent);
-/*
-	if(NodeContainsWorkPtr_slow(n)) {
-		fprintf(stderr, "TODO: Remove work_ptr from deleted node\n");
-		exit(1);
-	}
-*/
+
 fprintf(stderr, "Delete %s, tree:\n%s\n", 
 	GetRuleName(n->rule.name),
 	ToString(0).c_str());
@@ -565,7 +584,6 @@ fprintf(stderr, "Delete %s, tree:\n%s\n",
 	assert(remove_from);
 	RemoveWorkPtrsFromTree(to_remove);
 	assert(!NodeContainsWorkPtr_slow(to_remove));
-fprintf(stderr, "\nTODO %s\n", ToString(0, to_remove).c_str());
 
 	const size_t prev_size = remove_from->parsed.back().subs.size();
 	remove_from->parsed.back().subs.erase(to_remove);

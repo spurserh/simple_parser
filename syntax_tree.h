@@ -106,14 +106,13 @@ struct SyntaxTree {
 
   private:
 
+  	Node* FindIncompletePattern(Node* within)const;
+
   	bool NodeContainsWorkPtr_slow(Node *n)const;
   	bool NodeIsSane(Node *n)const;
 
   	// Recursively check that all sub-nodes are complete, without using subs_complete
   	bool CheckComplete_slow(Node *n)const;
-
-  	void GetIncompleteLeaves(absl::InlinedVector<Node*, 4> &output, Node* n=0);
-  	void GetPatternIncompleteNodes(absl::InlinedVector<Node*, 4> &output, Node* n=0);
 
   	void RemoveWorkPtrsFromTree(Node *n);
 

@@ -1,6 +1,7 @@
 /LEX/
 
 %option noyywrap
+digit [0-9]
 
 
 %%
@@ -10,6 +11,8 @@
 "false"	return LexGetTokenInstName("FALSE", "");
 ","     return LexGetTokenInstName("COMMA", "");
 "-"     return LexGetTokenInstName("DASH", "");
+{digit}+       return LexGetTokenInstName("NUM", yytext);
+
 %%
 
 /GRAMMAR/
@@ -23,6 +26,8 @@ expr expr_true true1
 expr expr_false FALSE
 expr expr_list COMMA expr expr
 expr expr_list_double COMMA COMMA expr expr
+expr num_expr NUM
+expr expr_minus expr DASH expr
 
 top top expr
 #top top COMMA expr expr

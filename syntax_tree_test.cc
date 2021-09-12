@@ -16,9 +16,25 @@ TEST(SyntaxTreeTest, SimpleStepDown) {
 	std::vector<parser::LexedToken> tokens;
 	tok.tok = parser::GetTokenInstName("TRUE");
 	tokens.push_back(tok);
-//	tok.tok = parser::GetTokenInstName("DASH");
-//	tokens.push_back(tok);
 	EXPECT_TRUE(tree.Parse(tokens.begin(), tokens.end()));
+	EXPECT_TRUE(tree.CanComplete());
+}
+
+TEST(SyntaxTreeTest, StepUp) {
+	parser::SyntaxTree tree;
+	ASSERT_TRUE(tree.Init("top"));
+	parser::LexedToken tok;
+	std::vector<parser::LexedToken> tokens;
+	tok.tok = parser::GetTokenInstName("NUM", "5");
+	tokens.push_back(tok);
+	tok.tok = parser::GetTokenInstName("DASH");
+	tokens.push_back(tok);
+	tok.tok = parser::GetTokenInstName("NUM", "10");
+	tokens.push_back(tok);
+	tok.tok = parser::GetTokenInstName("DASH");
+	tokens.push_back(tok);
+	tok.tok = parser::GetTokenInstName("NUM", "1");
+	tokens.push_back(tok);	EXPECT_TRUE(tree.Parse(tokens.begin(), tokens.end()));
 	EXPECT_TRUE(tree.CanComplete());
 }
 
